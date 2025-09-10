@@ -1,0 +1,10 @@
+Invoice Number,Invoice Date,Company,Job Key,Reference Number,Job Title,Location,Quantity,Unit,Average Cost,Total
+USI25-04549335,"Aug 20, 2025",The Employers Choice,fd7cf2f02cef8860,4042257-188-1,Sales Associate,"Indianapolis, IN",53,click,1.10,58.16
+USI25-04549335,"Aug 20, 2025",The Employers Choice,3fb4258b211237c9,4042257-171-1,Insurance Representative,"Indianapolis, IN",53,click,1.65,87.21
+USI25-04549335,"Aug 20, 2025",The Employers Choice,4fe7ba770e7281bb,4042257-192-1,Insurance Representative,"Evansville, IN",54,click,1.08,58.33
+USI25-04549335,"Aug 20, 2025",The Employers Choice,4e1290f21e69b986,4042257-172-4,Insurance Representative,"Carmel, IN",67,click,1.13,75.39
+,,,,,,,,,,SUBTOTAL - Invoice USI25-04549335
+,,,,,,,,,,279.09
+,,,,,,,,,,GRAND TOTAL + 10% - Invoice USI25-04549335
+,,,,,,,,,,307.00
+,,,,,,,,,,

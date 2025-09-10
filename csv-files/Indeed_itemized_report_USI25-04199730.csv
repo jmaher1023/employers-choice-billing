@@ -1,0 +1,30 @@
+Itemized report for invoice #USI25-04199730
+"This itemized report reflects the cost of each item purchased on the associated invoice."
+
+"Itemization details Jul 31, 2025"
+
+Company,Job Key,Reference Number,Job Title,Location,Quantity,Unit,Average Cost,Total,Currency
+"The Employers Choice","489c9ea2ce571217","4042257-168-1","Sales Associate","Dallas, TX","77","click","0.47","36.24","USD"
+"The Employers Choice","870c07f9b5e8b83b","4042257-147-1","Sales Representative","Maumelle, AR","164","click","0.56","91.77","USD"
+"The Employers Choice","889054002d0dcea5","4042257-148-1","Sales Associate","Maumelle, AR","60","click","0.42","25.43","USD"
+"The Employers Choice","e32aaa6348335b1d","4042257-152-1","Insurance Representative","Little Rock, AR","80","click","0.59","47.47","USD"
+"The Employers Choice","f3bbd67af42b42e1","4042257-183-1","Sales Representative","Tyler, TX","86","click","0.35","30.35","USD"
+"The Employers Choice","77293667443d372d","4042257-181-1","Insurance Representative","Jonesboro, AR","79","click","0.79","62.59","USD"
+"The Employers Choice","fd7cf2f02cef8860","4042257-188-1","Sales Associate","Indianapolis, IN","133","click","0.75","100.11","USD"
+"The Employers Choice","9bbb621ea1839a35","4042257-139-1","Sales Associate","Searcy, AR","108","click","0.59","63.39","USD"
+"The Employers Choice","3fb4258b211237c9","4042257-171-1","Insurance Representative","Indianapolis, IN","128","click","0.80","102.36","USD"
+"The Employers Choice","3d667d2a2f1747a4","4042257-175-2","Virtual Insurance Representative","Fayetteville, AR","55","click","0.25","13.65","USD"
+"The Employers Choice","4fe7ba770e7281bb","4042257-192-1","Insurance Representative","Evansville, IN","122","click","0.69","84.68","USD"
+"The Employers Choice","802eb1777372fb34","4042257-187-1","Virtual Insurance Representative","Southaven, MS","46","click","0.33","15.16","USD"
+"The Employers Choice","4e1290f21e69b986","4042257-172-4","Insurance Representative","Carmel, IN","115","click","0.90","103.73","USD"
+"The Employers Choice","095cbf54656b79d3","4042257-177-4","Insurance Representative","Conway, AR","38","click","0.57","21.62","USD"
+"The Employers Choice","6bebd637ef6a80fb","4042257-184-1","Virtual Insurance Representative","Oxford, MS","43","click","0.30","12.98","USD"
+"The Employers Choice","243eae2b72de5001","4042257-191-1","Insurance Representative","Mobile, AL","105","click","0.46","48.18","USD"
+"The Employers Choice","fe6d8e12c4e18050","4042257-190-1","Insurance Representative","Huntsville, AL","86","click","0.45","39.08","USD"
+"The Employers Choice","56411bd623e8d037","4042257-178-1","Insurance Representative","Rogers, AR","59","click","1.32","77.66","USD"
+,,,,,,,"Total cost","976.45","USD"
+,,,,,,,"Tax","0.00","USD"
+,,,,,,,"Total amount","976.45","USD"
+
+
+"This itemized report reflects the cost of each item purchased on the associated invoice."

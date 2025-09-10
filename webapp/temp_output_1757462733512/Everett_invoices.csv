@@ -1,0 +1,17 @@
+Invoice Number,Invoice Date,Company,Job Key,Reference Number,Job Title,Location,Quantity,Unit,Average Cost,Total
+USI25-03921252,"Jul 23, 2025",The Employers Choice,489c9ea2ce571217,4042257-168-1,Sales Associate,"Dallas, TX",53,click,0.68,35.80
+USI25-03921252,"Jul 23, 2025",The Employers Choice,870c07f9b5e8b83b,4042257-147-1,Sales Representative,"Maumelle, AR",140,click,0.66,92.39
+USI25-03921252,"Jul 23, 2025",The Employers Choice,889054002d0dcea5,4042257-148-1,Sales Associate,"Maumelle, AR",77,click,0.42,32.08
+USI25-03921252,"Jul 23, 2025",The Employers Choice,e32aaa6348335b1d,4042257-152-1,Insurance Representative,"Little Rock, AR",103,click,0.56,57.99
+USI25-03921252,"Jul 23, 2025",The Employers Choice,f3bbd67af42b42e1,4042257-183-1,Sales Representative,"Tyler, TX",149,click,0.53,78.98
+USI25-03921252,"Jul 23, 2025",The Employers Choice,77293667443d372d,4042257-181-1,Insurance Representative,"Jonesboro, AR",104,click,0.57,59.01
+USI25-03921252,"Jul 23, 2025",The Employers Choice,9bbb621ea1839a35,4042257-139-1,Sales Associate,"Searcy, AR",110,click,0.52,57.48
+USI25-03921252,"Jul 23, 2025",The Employers Choice,3d667d2a2f1747a4,4042257-175-2,Virtual Insurance Representative,"Fayetteville, AR",218,click,0.24,52.42
+USI25-03921252,"Jul 23, 2025",The Employers Choice,802eb1777372fb34,4042257-187-1,Virtual Insurance Representative,"Southaven, MS",81,click,0.34,27.33
+USI25-03921252,"Jul 23, 2025",The Employers Choice,6bebd637ef6a80fb,4042257-184-1,Virtual Insurance Representative,"Oxford, MS",87,click,0.34,30.00
+USI25-03921252,"Jul 23, 2025",The Employers Choice,56411bd623e8d037,4042257-178-1,Insurance Representative,"Rogers, AR",103,click,0.95,97.41
+,,,,,,,,,,SUBTOTAL - Invoice USI25-03921252
+,,,,,,,,,,620.89
+,,,,,,,,,,GRAND TOTAL + 10% - Invoice USI25-03921252
+,,,,,,,,,,682.98
+,,,,,,,,,,

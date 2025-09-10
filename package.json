@@ -1,0 +1,17 @@
+{
+  "name": "invoice-csv-processor",
+  "version": "1.0.0",
+  "description": "Process multiple CSV invoice files and group them by location",
+  "main": "process-invoices.js",
+  "scripts": {
+    "start": "node process-invoices.js",
+    "process": "node process-invoices.js"
+  },
+  "dependencies": {
+    "csv-parser": "^3.0.0",
+    "csv-writer": "^1.6.0"
+  },
+  "keywords": ["csv", "invoice", "processing", "grouping"],
+  "author": "",
+  "license": "MIT"
+}

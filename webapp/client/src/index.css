@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f6f8fa;
+  color: #222;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Custom scrollbar with brand colors */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f6f8fa;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #9D0035;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8b002f;
+}
+
+/* Brand button styles */
+.btn-brand {
+  @apply bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors font-medium;
+}
+
+.btn-brand-secondary {
+  @apply bg-white text-primary-500 border border-primary-500 px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors font-medium;
+}
+
+/* Brand card styles */
+.card-brand {
+  @apply bg-white rounded-lg shadow-sm border border-gray-200;
+}
+
+/* Brand table styles */
+.table-brand th {
+  @apply bg-primary-50 text-primary-500 font-semibold text-xs uppercase tracking-wider;
+}
+
+.table-brand tbody tr:nth-child(even) {
+  @apply bg-gray-50;
+}
