@@ -391,10 +391,59 @@ app.get('/api/invoices/for-custom', (req, res) => {
   const params = [];
   
   if (business) {
-    query += ' AND i.business = ?';
-    params.push(business);
+    // Get business name from business ID to match against invoice business field
+    db.get('SELECT name FROM businesses WHERE id = ?', [business], (err, businessRow) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!businessRow) {
+        return res.status(400).json({ error: 'Business not found' });
+      }
+      
+      // Map business name to lowercase for matching
+      const businessName = businessRow.name.toLowerCase();
+      let businessQuery = query;
+      let businessParams = [...params];
+      
+      if (businessName.includes('everett')) {
+        businessQuery += ' AND i.business = ?';
+        businessParams.push('everett');
+      } else if (businessName.includes('whittingham')) {
+        businessQuery += ' AND i.business = ?';
+        businessParams.push('whittingham');
+      } else if (businessName.includes('mclain')) {
+        businessQuery += ' AND i.business = ?';
+        businessParams.push('mclain');
+      }
+      
+      // Add other filters
+      if (client_id) {
+        businessQuery += ' AND i.client_id = ?';
+        businessParams.push(client_id);
+      }
+      
+      if (location_filter) {
+        businessQuery += ' AND ii.location LIKE ?';
+        businessParams.push(`%${location_filter}%`);
+      }
+      
+      businessQuery += ' GROUP BY i.invoice_number, i.invoice_date, i.business, i.client_id ORDER BY i.invoice_date DESC';
+      
+      db.all(businessQuery, businessParams, (err, rows) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        
+        res.json({ invoices: rows });
+      });
+    });
+    return;
   }
   
+  // Handle case when no business is selected
   if (client_id) {
     query += ' AND i.client_id = ?';
     params.push(client_id);
