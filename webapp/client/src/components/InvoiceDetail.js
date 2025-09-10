@@ -24,8 +24,12 @@ const InvoiceDetail = () => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newPayment, setNewPayment] = useState({ amount: '', notes: '' });
-  const [emailData, setEmailData] = useState({ client_email: '', client_name: '' });
+  const [emailData, setEmailData] = useState({ client_email: '', client_name: '', message: '', notes: '' });
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [editingItem, setEditingItem] = useState(null);
+  const [editingItemData, setEditingItemData] = useState({});
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [editingHeaderData, setEditingHeaderData] = useState({});
 
   useEffect(() => {
     fetchInvoiceDetails();
@@ -95,7 +99,7 @@ const InvoiceDetail = () => {
 
       if (response.ok) {
         toast.success('Invoice sent successfully');
-        setEmailData({ client_email: '', client_name: '' });
+        setEmailData({ client_email: '', client_name: '', message: '', notes: '' });
         setShowEmailModal(false);
         fetchInvoiceDetails(); // Refresh data
       } else {
@@ -141,7 +145,102 @@ const InvoiceDetail = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
+    if (!dateString) return '-';
+    // Handle date strings consistently to avoid timezone issues
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString();
+  };
+
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    // Ensure we get the correct date for input fields
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toISOString().split('T')[0];
+  };
+
+  const isCustomInvoice = invoice?.invoice_number?.endsWith('-MERGED');
+
+  const startEditingItem = (item) => {
+    setEditingItem(item.id);
+    setEditingItemData({
+      job_key: item.job_key || '',
+      reference_number: item.reference_number || '',
+      job_title: item.job_title || '',
+      location: item.location || '',
+      quantity: item.quantity || '',
+      unit: item.unit || '',
+      average_cost: item.average_cost || '',
+      total: item.total || '',
+      original_invoice_date: formatDateForInput(item.original_invoice_date)
+    });
+  };
+
+  const cancelEditing = () => {
+    setEditingItem(null);
+    setEditingItemData({});
+  };
+
+  const saveItemEdit = async () => {
+    try {
+      const response = await fetch(`/api/invoice-items/${editingItem}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editingItemData)
+      });
+
+      if (response.ok) {
+        toast.success('Item updated successfully');
+        setEditingItem(null);
+        setEditingItemData({});
+        fetchInvoiceDetails(); // Refresh data
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to update item');
+      }
+    } catch (error) {
+      console.error('Error updating item:', error);
+      toast.error('Failed to update item');
+    }
+  };
+
+  const startEditingHeader = () => {
+    setEditingHeader(true);
+    setEditingHeaderData({
+      invoice_number: invoice?.invoice_number || '',
+      invoice_date: formatDateForInput(invoice?.invoice_date)
+    });
+  };
+
+  const cancelHeaderEdit = () => {
+    setEditingHeader(false);
+    setEditingHeaderData({});
+  };
+
+  const saveHeaderEdit = async () => {
+    try {
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(editingHeaderData)
+      });
+
+      if (response.ok) {
+        toast.success('Invoice updated successfully');
+        setEditingHeader(false);
+        setEditingHeaderData({});
+        fetchInvoiceDetails(); // Refresh data
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to update invoice');
+      }
+    } catch (error) {
+      console.error('Error updating invoice:', error);
+      toast.error('Failed to update invoice');
+    }
   };
 
   const getStatusColor = (status) => {
@@ -223,11 +322,60 @@ const InvoiceDetail = () => {
       <div className="card-brand p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{invoice.invoice_number}</h1>
-            <div className="flex items-center mt-2 text-gray-600">
-              <Calendar className="h-4 w-4 mr-2" />
-              {formatDate(invoice.invoice_date)}
-            </div>
+            {editingHeader ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Invoice Number
+                  </label>
+                  <input
+                    type="text"
+                    value={editingHeaderData.invoice_number}
+                    onChange={(e) => setEditingHeaderData(prev => ({ ...prev, invoice_number: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-lg font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Invoice Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editingHeaderData.invoice_date}
+                    onChange={(e) => setEditingHeaderData(prev => ({ ...prev, invoice_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={saveHeaderEdit}
+                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={cancelHeaderEdit}
+                    className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{invoice.invoice_number}</h1>
+                <div className="flex items-center mt-2 text-gray-600">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {formatDate(invoice.invoice_date)}
+                </div>
+                <button
+                  onClick={startEditingHeader}
+                  className="mt-2 text-blue-600 hover:text-blue-700 text-sm"
+                >
+                  Edit Invoice Details
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <div className="flex items-center text-gray-600 mb-2">
@@ -297,13 +445,13 @@ const InvoiceDetail = () => {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Company
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Job Title
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Location
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Original Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Quantity
@@ -317,31 +465,124 @@ const InvoiceDetail = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Total
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {items.map((item) => (
                 <tr key={item.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.company}
+                    {editingItem === item.id ? (
+                      <input
+                        type="text"
+                        value={editingItemData.job_title}
+                        onChange={(e) => setEditingItemData(prev => ({ ...prev, job_title: e.target.value }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      item.job_title
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.job_title}
+                    {editingItem === item.id ? (
+                      <input
+                        type="text"
+                        value={editingItemData.location}
+                        onChange={(e) => setEditingItemData(prev => ({ ...prev, location: e.target.value }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      item.location
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.location}
+                    {editingItem === item.id ? (
+                      <input
+                        type="date"
+                        value={formatDateForInput(editingItemData.original_invoice_date)}
+                        onChange={(e) => setEditingItemData(prev => ({ ...prev, original_invoice_date: e.target.value }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      item.original_invoice_date ? formatDate(item.original_invoice_date) : '-'
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.quantity}
+                    {editingItem === item.id ? (
+                      <input
+                        type="number"
+                        value={editingItemData.quantity}
+                        onChange={(e) => setEditingItemData(prev => ({ ...prev, quantity: e.target.value }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      item.quantity
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {item.unit}
+                    {editingItem === item.id ? (
+                      <input
+                        type="text"
+                        value={editingItemData.unit}
+                        onChange={(e) => setEditingItemData(prev => ({ ...prev, unit: e.target.value }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      item.unit
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {formatCurrency(item.average_cost)}
+                    {editingItem === item.id ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingItemData.average_cost}
+                        onChange={(e) => setEditingItemData(prev => ({ ...prev, average_cost: e.target.value }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      formatCurrency(item.average_cost)
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {formatCurrency(item.total)}
+                    {editingItem === item.id ? (
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingItemData.total}
+                        onChange={(e) => setEditingItemData(prev => ({ ...prev, total: e.target.value }))}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      formatCurrency(item.total)
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {editingItem === item.id ? (
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={saveItemEdit}
+                          className="text-green-600 hover:text-green-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEditing}
+                          className="text-gray-600 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => startEditingItem(item)}
+                        className="text-blue-600 hover:text-blue-700"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -473,6 +714,30 @@ const InvoiceDetail = () => {
                   onChange={(e) => setEmailData(prev => ({ ...prev, client_name: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="Client Name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Message (optional)
+                </label>
+                <textarea
+                  value={emailData.message}
+                  onChange={(e) => setEmailData(prev => ({ ...prev, message: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  rows="3"
+                  placeholder="Personal message to include in the email..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes (optional)
+                </label>
+                <textarea
+                  value={emailData.notes}
+                  onChange={(e) => setEmailData(prev => ({ ...prev, notes: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  rows="3"
+                  placeholder="Notes to include in the invoice PDF..."
                 />
               </div>
             </div>

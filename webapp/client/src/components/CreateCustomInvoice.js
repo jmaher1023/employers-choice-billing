@@ -376,7 +376,7 @@ const CreateCustomInvoice = () => {
                 value={customInvoiceNumber}
                 onChange={(e) => setCustomInvoiceNumber(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                placeholder="e.g., CUSTOM-MCLAIN-HUNTSVILLE-001"
+                placeholder="e.g., MCLAIN-HUNTSVILLE-001 (will become MCLAIN-HUNTSVILLE-001-MERGED)"
               />
             </div>
             <div>
