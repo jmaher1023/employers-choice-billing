@@ -114,21 +114,40 @@ class InvoiceProcessor {
     
     if (businessClients.length > 0) {
       const city = location ? location.split(',')[0].trim() : '';
+      console.log(`DEBUG: Looking for city "${city}" in business "${business}"`);
+      console.log(`DEBUG: Available clients:`, businessClients.map(c => `${c.name} (${c.locations})`));
+      process.stdout.write(`DEBUG: Looking for city "${city}" in business "${business}"\n`);
+      process.stdout.write(`DEBUG: Available clients: ${businessClients.map(c => `${c.name} (${c.locations})`).join(', ')}\n`);
       
-      // Find client whose locations include this city
+      // Find client whose locations include this city (exact match)
       for (const client of businessClients) {
-        if (client.locations && client.locations.includes(city)) {
-          const lastName = client.name.split(' ').pop();
-          return {
-            clientName: client.name,
-            clientCode: lastName.substring(0, 3).toUpperCase(),
-            lastName: lastName,
-            clientId: client.id
-          };
+        if (client.locations) {
+          // Split locations by comma and check for exact city match
+          const clientLocations = client.locations.split(',').map(loc => loc.trim());
+          const cityMatch = clientLocations.some(clientLoc => {
+            // Extract city from "City, State" format
+            const clientCity = clientLoc.split(',')[0].trim();
+            const match = clientCity.toLowerCase() === city.toLowerCase();
+            console.log(`DEBUG: Checking "${clientCity}" vs "${city}" = ${match}`);
+            return match;
+          });
+          
+          if (cityMatch) {
+            console.log(`DEBUG: Found match for "${city}" -> ${client.name}`);
+            const lastName = client.name.split(' ').pop();
+            return {
+              clientName: client.name,
+              clientCode: lastName.substring(0, 3).toUpperCase(),
+              lastName: lastName,
+              clientId: client.id
+            };
+          }
         }
       }
       
       // If no specific match, use the first client for this business
+      console.log(`DEBUG: No specific match for "${city}", using first client: ${businessClients[0].name}`);
+      process.stdout.write(`DEBUG: No specific match for "${city}", using first client: ${businessClients[0].name}\n`);
       const firstClient = businessClients[0];
       const lastName = firstClient.name.split(' ').pop();
       return {
@@ -140,6 +159,21 @@ class InvoiceProcessor {
     }
 
     // Fallback to default mapping if no clients in database
+    console.log(`DEBUG: Using fallback mapping for business "${business}"`);
+    process.stdout.write(`DEBUG: Using fallback mapping for business "${business}"\n`);
+    
+    // Special case for Huntsville, AL - assign to Michael Phillips
+    if (business === 'mclain' && location && location.toLowerCase().includes('huntsville')) {
+      console.log(`DEBUG: Special case - Huntsville, AL assigned to Michael Phillips`);
+      process.stdout.write(`DEBUG: Special case - Huntsville, AL assigned to Michael Phillips\n`);
+      return {
+        clientName: 'Michael Phillips',
+        clientCode: 'PHI',
+        lastName: 'Phillips',
+        clientId: 'phillips-fallback'
+      };
+    }
+    
     const businessToClient = {
       'everett': { clientName: 'Jason Everett', clientCode: 'EVE', lastName: 'Everett' },
       'whittingham': { clientName: 'Natalie Whittingham', clientCode: 'WHI', lastName: 'Whittingham' },
@@ -147,7 +181,10 @@ class InvoiceProcessor {
       'others': { clientName: 'Other Client', clientCode: 'OTH', lastName: 'Other' }
     };
 
-    return businessToClient[business] || { clientName: 'Unknown Client', clientCode: 'UNK', lastName: 'Unknown' };
+    const result = businessToClient[business] || { clientName: 'Unknown Client', clientCode: 'UNK', lastName: 'Unknown' };
+    console.log(`DEBUG: Fallback result: ${result.clientName}`);
+    process.stdout.write(`DEBUG: Fallback result: ${result.clientName}\n`);
+    return result;
   }
 
   // Determine business based on location
