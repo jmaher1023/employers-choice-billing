@@ -24,6 +24,11 @@ app.use(express.json());
 app.use(express.static('public'));
 app.use(express.static(path.join(__dirname, 'client/build')));
 
+// Serve favicon from webapp root
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(__dirname, 'favicon.ico'));
+});
+
 // Set Content Security Policy headers
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', 
@@ -103,6 +108,7 @@ db.serialize(() => {
     unit TEXT,
     average_cost REAL,
     total REAL,
+    original_invoice_date TEXT,
     FOREIGN KEY (invoice_id) REFERENCES invoices (id)
   )`);
 
@@ -140,18 +146,23 @@ db.serialize(() => {
     notes TEXT,
     FOREIGN KEY (invoice_id) REFERENCES invoices (id)
   )`);
+
+  // Add original_invoice_date column to existing invoice_items table if it doesn't exist
+  db.run(`ALTER TABLE invoice_items ADD COLUMN original_invoice_date TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Error adding original_invoice_date column:', err);
+    }
+  });
 });
 
-// Email transporter setup
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
+// Email webhook configuration
+const EMAIL_WEBHOOK_URL = process.env.EMAIL_WEBHOOK_URL;
+
+if (EMAIL_WEBHOOK_URL) {
+  console.log('Email webhook configured - email sending enabled via webhook');
+} else {
+  console.log('Email webhook not configured - email sending disabled');
+}
 
 // Routes
 
@@ -482,52 +493,77 @@ app.post('/api/invoices/custom', async (req, res) => {
       return res.status(400).json({ error: 'Business and custom invoice number are required' });
     }
 
-    // Build query to get invoices based on criteria
-    let query = `
-      SELECT i.*, ii.* 
-      FROM invoices i
-      JOIN invoice_items ii ON i.id = ii.invoice_id
-      WHERE i.business = ?
-    `;
-    
-    const params = [business];
-    const conditions = [];
-
-    // Add client filter if specified
-    if (client_id) {
-      conditions.push('i.client_id = ?');
-      params.push(client_id);
-    }
-
-    // Add location filter if specified
-    if (location_filter) {
-      conditions.push('ii.location LIKE ?');
-      params.push(`%${location_filter}%`);
-    }
-
-    // Add specific invoice numbers filter if specified
-    if (invoice_numbers && invoice_numbers.length > 0) {
-      const placeholders = invoice_numbers.map(() => '?').join(',');
-      conditions.push(`i.invoice_number IN (${placeholders})`);
-      params.push(...invoice_numbers);
-    }
-
-    if (conditions.length > 0) {
-      query += ' AND ' + conditions.join(' AND ');
-    }
-
-    query += ' ORDER BY i.invoice_date, ii.location';
-
-    // Get the filtered invoice items
-    db.all(query, params, async (err, rows) => {
+    // First, get the business name from the business ID
+    db.get('SELECT name FROM businesses WHERE id = ?', [business], (err, businessRow) => {
       if (err) {
         console.error('Database error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
-
-      if (rows.length === 0) {
-        return res.status(400).json({ error: 'No invoice items found matching the criteria' });
+      
+      if (!businessRow) {
+        return res.status(400).json({ error: 'Business not found' });
       }
+      
+      // Map business name to lowercase for matching
+      const businessName = businessRow.name.toLowerCase();
+      let mappedBusinessName;
+      
+      if (businessName.includes('everett')) {
+        mappedBusinessName = 'everett';
+      } else if (businessName.includes('whittingham')) {
+        mappedBusinessName = 'whittingham';
+      } else if (businessName.includes('mclain')) {
+        mappedBusinessName = 'mclain';
+      } else {
+        mappedBusinessName = businessName; // fallback to original name
+      }
+
+      // Build query to get invoices based on criteria
+      let query = `
+        SELECT i.*, ii.* 
+        FROM invoices i
+        JOIN invoice_items ii ON i.id = ii.invoice_id
+        WHERE i.business = ?
+      `;
+      
+      const params = [mappedBusinessName];
+      const conditions = [];
+
+      // Add client filter if specified
+      if (client_id) {
+        conditions.push('i.client_id = ?');
+        params.push(client_id);
+      }
+
+      // Add location filter if specified
+      if (location_filter) {
+        conditions.push('ii.location LIKE ?');
+        params.push(`%${location_filter}%`);
+      }
+
+      // Add specific invoice numbers filter if specified
+      if (invoice_numbers && invoice_numbers.length > 0) {
+        const placeholders = invoice_numbers.map(() => '?').join(',');
+        conditions.push(`i.invoice_number IN (${placeholders})`);
+        params.push(...invoice_numbers);
+      }
+
+      if (conditions.length > 0) {
+        query += ' AND ' + conditions.join(' AND ');
+      }
+
+      query += ' ORDER BY i.invoice_date, ii.location';
+
+      // Get the filtered invoice items
+      db.all(query, params, async (err, rows) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (rows.length === 0) {
+          return res.status(400).json({ error: 'No invoice items found matching the criteria' });
+        }
 
       // Group items by location for better organization
       const locationGroups = {};
@@ -545,11 +581,15 @@ app.post('/api/invoices/custom', async (req, res) => {
       const grandTotal = totalSubtotal * 1.10; // Add 10% billing fee
       const customInvoiceId = uuidv4();
 
-      // Create the custom invoice
+      // Create the custom invoice with -MERGED suffix
+      const mergedInvoiceNumber = custom_invoice_number.endsWith('-MERGED') 
+        ? custom_invoice_number 
+        : `${custom_invoice_number}-MERGED`;
+      
       db.run(
         `INSERT INTO invoices (id, invoice_number, invoice_date, business, client_id, subtotal, grand_total, status) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [customInvoiceId, custom_invoice_number, new Date().toISOString().split('T')[0], business, client_id || null, totalSubtotal, grandTotal, 'pending'],
+        [customInvoiceId, mergedInvoiceNumber, new Date().toISOString().split('T')[0], mappedBusinessName, client_id || null, totalSubtotal, grandTotal, 'pending'],
         function(err) {
           if (err) {
             console.error('Error creating custom invoice:', err);
@@ -562,9 +602,9 @@ app.post('/api/invoices/custom', async (req, res) => {
             const itemId = uuidv4();
             const itemPromise = new Promise((resolve, reject) => {
               db.run(
-                `INSERT INTO invoice_items (id, invoice_id, company, job_key, reference_number, job_title, location, quantity, unit, average_cost, total) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [itemId, customInvoiceId, row.company, row.job_key, row.reference_number, row.job_title, row.location, row.quantity, row.unit, row.average_cost, row.total],
+                `INSERT INTO invoice_items (id, invoice_id, company, job_key, reference_number, job_title, location, quantity, unit, average_cost, total, original_invoice_date) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [itemId, customInvoiceId, row.company, row.job_key, row.reference_number, row.job_title, row.location, row.quantity, row.unit, row.average_cost, row.total, row.invoice_date],
                 function(err) {
                   if (err) {
                     console.error('Error inserting custom invoice item:', err);
@@ -584,7 +624,7 @@ app.post('/api/invoices/custom', async (req, res) => {
                 success: true,
                 message: 'Custom invoice created successfully',
                 invoice_id: customInvoiceId,
-                invoice_number: custom_invoice_number,
+                invoice_number: mergedInvoiceNumber,
                 summary: {
                   total_items: rows.length,
                   locations: Object.keys(locationGroups),
@@ -599,6 +639,7 @@ app.post('/api/invoices/custom', async (req, res) => {
             });
         }
       );
+      });
     });
 
   } catch (error) {
@@ -1091,7 +1132,7 @@ app.post('/api/invoices/:id/payments', (req, res) => {
 // Send invoice via email
 app.post('/api/invoices/:id/send', async (req, res) => {
   const invoiceId = req.params.id;
-  const { client_email, client_name } = req.body;
+  const { client_email, client_name, message, notes } = req.body;
   
   if (!client_email) {
     return res.status(400).json({ error: 'Client email is required' });
@@ -1313,6 +1354,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
               <div class="notes">
                 <h3>Notes:</h3><br>
                 <p>Combined billing from ${getDateRange()}</p>
+                ${notes ? `<p><strong>Additional Notes:</strong><br>${notes.replace(/\n/g, '<br>')}</p>` : ''}
               </div>
               <footer>
                 <p>
@@ -1326,15 +1368,49 @@ app.post('/api/invoices/:id/send', async (req, res) => {
           </html>
         `;
         
-        // Send email
-        const mailOptions = {
-          from: process.env.EMAIL_FROM,
+        // Check if email webhook is configured
+        if (!EMAIL_WEBHOOK_URL) {
+          return res.status(503).json({ 
+            error: 'Email webhook not configured', 
+            message: 'Please configure EMAIL_WEBHOOK_URL in environment variables to send invoices via email' 
+          });
+        }
+        
+        // Send email via webhook
+        const webhookPayload = {
           to: client_email,
           subject: `Invoice ${invoice.invoice_number} - ${client_name || 'Billing'}`,
-          html: emailHtml
+          html: emailHtml,
+          invoice_number: invoice.invoice_number,
+          client_name: client_name || 'Billing',
+          invoice_id: invoiceId,
+          message: message || '',
+          notes: notes || ''
         };
         
-        await transporter.sendMail(mailOptions);
+        try {
+          const webhookResponse = await fetch(EMAIL_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(webhookPayload),
+            timeout: 10000 // 10 second timeout
+          });
+          
+          if (!webhookResponse.ok) {
+            throw new Error(`Webhook request failed: ${webhookResponse.status} ${webhookResponse.statusText}`);
+          }
+          
+          console.log('Email sent successfully via webhook');
+        } catch (webhookError) {
+          console.error('Webhook error:', webhookError.message);
+          return res.status(500).json({ 
+            error: 'Failed to send email via webhook', 
+            message: webhookError.message,
+            details: 'Please check your n8n webhook URL and ensure it\'s accessible'
+          });
+        }
         
         // Update invoice status
         db.run(
@@ -1359,12 +1435,12 @@ app.post('/api/invoices/:id/send', async (req, res) => {
 // Get dashboard statistics
 app.get('/api/dashboard', (req, res) => {
   const queries = [
-    'SELECT COUNT(*) as total_invoices FROM invoices',
-    'SELECT COUNT(*) as pending_invoices FROM invoices WHERE status = "pending"',
-    'SELECT COUNT(*) as paid_invoices FROM invoices WHERE status = "paid"',
-    'SELECT COALESCE(SUM(grand_total), 0) as total_amount FROM invoices',
-    'SELECT COALESCE(SUM(grand_total), 0) as pending_amount FROM invoices WHERE status IN ("pending", "sent")',
-    'SELECT COALESCE(SUM(grand_total), 0) as paid_amount FROM invoices WHERE status = "paid"'
+    'SELECT COUNT(*) as total_invoices FROM invoices WHERE invoice_number NOT LIKE "%-MERGED"',
+    'SELECT COUNT(*) as pending_invoices FROM invoices WHERE status = "pending" AND invoice_number NOT LIKE "%-MERGED"',
+    'SELECT COUNT(*) as paid_invoices FROM invoices WHERE status = "paid" AND invoice_number NOT LIKE "%-MERGED"',
+    'SELECT COALESCE(SUM(grand_total), 0) as total_amount FROM invoices WHERE invoice_number NOT LIKE "%-MERGED"',
+    'SELECT COALESCE(SUM(grand_total), 0) as pending_amount FROM invoices WHERE status IN ("pending", "sent") AND invoice_number NOT LIKE "%-MERGED"',
+    'SELECT COALESCE(SUM(grand_total), 0) as paid_amount FROM invoices WHERE status = "paid" AND invoice_number NOT LIKE "%-MERGED"'
   ];
   
   Promise.all(queries.map(query => 
@@ -1387,6 +1463,143 @@ app.get('/api/dashboard', (req, res) => {
     res.json(stats);
   }).catch(err => {
     console.error('Dashboard error:', err);
+    res.status(500).json({ error: 'Database error' });
+  });
+});
+
+// Update invoice item
+app.put('/api/invoice-items/:id', (req, res) => {
+  const itemId = req.params.id;
+  const { 
+    job_key, 
+    reference_number, 
+    job_title, 
+    location, 
+    quantity, 
+    unit, 
+    average_cost, 
+    total, 
+    original_invoice_date 
+  } = req.body;
+
+  db.run(
+    `UPDATE invoice_items SET 
+     job_key = ?, reference_number = ?, job_title = ?, 
+     location = ?, quantity = ?, unit = ?, average_cost = ?, 
+     total = ?, original_invoice_date = ?
+     WHERE id = ?`,
+    [job_key, reference_number, job_title, location, quantity, unit, average_cost, total, original_invoice_date, itemId],
+    function(err) {
+      if (err) {
+        console.error('Error updating invoice item:', err);
+        return res.status(500).json({ error: 'Failed to update invoice item' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Invoice item not found' });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Invoice item updated successfully' 
+      });
+    }
+  );
+});
+
+// Update invoice details (name, date, etc.)
+app.put('/api/invoices/:id', (req, res) => {
+  const invoiceId = req.params.id;
+  const { invoice_number, invoice_date } = req.body;
+
+  if (!invoice_number) {
+    return res.status(400).json({ error: 'Invoice number is required' });
+  }
+
+  db.run(
+    'UPDATE invoices SET invoice_number = ?, invoice_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [invoice_number, invoice_date, invoiceId],
+    function(err) {
+      if (err) {
+        console.error('Error updating invoice:', err);
+        return res.status(500).json({ error: 'Failed to update invoice' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Invoice not found' });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Invoice updated successfully' 
+      });
+    }
+  );
+});
+
+// Update custom invoice totals
+app.put('/api/invoices/:id/totals', (req, res) => {
+  const invoiceId = req.params.id;
+  
+  // Recalculate totals from invoice items
+  db.all('SELECT total FROM invoice_items WHERE invoice_id = ?', [invoiceId], (err, items) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+    const grandTotal = subtotal * 1.10; // Add 10% billing fee
+    
+    db.run(
+      'UPDATE invoices SET subtotal = ?, grand_total = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [subtotal, grandTotal, invoiceId],
+      function(err) {
+        if (err) {
+          console.error('Error updating invoice totals:', err);
+          return res.status(500).json({ error: 'Failed to update invoice totals' });
+        }
+        
+        res.json({ 
+          success: true, 
+          message: 'Invoice totals updated successfully',
+          subtotal: subtotal,
+          grand_total: grandTotal
+        });
+      }
+    );
+  });
+});
+
+// Get custom invoice statistics
+app.get('/api/dashboard/custom', (req, res) => {
+  const queries = [
+    'SELECT COUNT(*) as custom_invoices FROM invoices WHERE invoice_number LIKE "%-MERGED"',
+    'SELECT COUNT(*) as custom_pending FROM invoices WHERE status = "pending" AND invoice_number LIKE "%-MERGED"',
+    'SELECT COUNT(*) as custom_sent FROM invoices WHERE status = "sent" AND invoice_number LIKE "%-MERGED"',
+    'SELECT COUNT(*) as custom_paid FROM invoices WHERE status = "paid" AND invoice_number LIKE "%-MERGED"',
+    'SELECT COALESCE(SUM(grand_total), 0) as custom_total_amount FROM invoices WHERE invoice_number LIKE "%-MERGED"'
+  ];
+  
+  Promise.all(queries.map(query => 
+    new Promise((resolve, reject) => {
+      db.get(query, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    })
+  )).then(results => {
+    const stats = {
+      custom_invoices: results[0].custom_invoices,
+      custom_pending: results[1].custom_pending,
+      custom_sent: results[2].custom_sent,
+      custom_paid: results[3].custom_paid,
+      custom_total_amount: results[4].custom_total_amount
+    };
+    
+    res.json(stats);
+  }).catch(err => {
+    console.error('Custom dashboard error:', err);
     res.status(500).json({ error: 'Database error' });
   });
 });
