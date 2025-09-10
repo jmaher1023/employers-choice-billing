@@ -1,0 +1,8 @@
+New Invoice Number,Original Invoice Number,Invoice Date,Company,Job Key,Reference Number,Job Title,Location,Quantity,Unit,Average Cost,Total,Client Name,Client Code,Client ID,Business
+MCL-03959467,USI25-03959467,"Jul 26, 2025",The Employers Choice,243eae2b72de5001,4042257-191-1,Insurance Representative,"Mobile, AL",73,click,0.48,34.86,McLain,MCL,34bf96e5-02cc-4596-a364-3ffcc2ecdd70,mclain
+MCL-03959467,USI25-03959467,"Jul 26, 2025",The Employers Choice,fe6d8e12c4e18050,4042257-190-1,Insurance Representative,"Huntsville, AL",57,click,0.47,26.77,McLain,MCL,34bf96e5-02cc-4596-a364-3ffcc2ecdd70,mclain
+,,,,,,,,,,,SUBTOTAL - Invoice MCL-03959467,,,,
+,,,,,,,,,,,61.63,,,,
+,,,,,,,,,,,GRAND TOTAL + 10% - Invoice MCL-03959467,,,,
+,,,,,,,,,,,67.79,,,,
+,,,,,,,,,,,,,,,

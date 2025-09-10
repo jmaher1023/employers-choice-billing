@@ -95,12 +95,28 @@ class InvoiceProcessor {
 
   // Extract client information based on business assignment and location
   extractClientInfo(business, location) {
-    // If we have clients for this business, try to match by location
-    if (this.clients[business] && this.clients[business].length > 0) {
+    // Try to find clients for this business (check both business ID and business name)
+    let businessClients = [];
+    
+    // First, try to find by business ID
+    if (this.clients[business]) {
+      businessClients = this.clients[business];
+    } else {
+      // If not found by ID, try to find by business name in all clients
+      Object.values(this.clients).forEach(clients => {
+        clients.forEach(client => {
+          if (client.business === business) {
+            businessClients.push(client);
+          }
+        });
+      });
+    }
+    
+    if (businessClients.length > 0) {
       const city = location ? location.split(',')[0].trim() : '';
       
       // Find client whose locations include this city
-      for (const client of this.clients[business]) {
+      for (const client of businessClients) {
         if (client.locations && client.locations.includes(city)) {
           const lastName = client.name.split(' ').pop();
           return {
@@ -113,7 +129,7 @@ class InvoiceProcessor {
       }
       
       // If no specific match, use the first client for this business
-      const firstClient = this.clients[business][0];
+      const firstClient = businessClients[0];
       const lastName = firstClient.name.split(' ').pop();
       return {
         clientName: firstClient.name,
@@ -126,8 +142,8 @@ class InvoiceProcessor {
     // Fallback to default mapping if no clients in database
     const businessToClient = {
       'everett': { clientName: 'Jason Everett', clientCode: 'EVE', lastName: 'Everett' },
-      'whittingham': { clientName: 'Whittingham', clientCode: 'WHI', lastName: 'Whittingham' },
-      'mclain': { clientName: 'McLain', clientCode: 'MCL', lastName: 'McLain' },
+      'whittingham': { clientName: 'Natalie Whittingham', clientCode: 'WHI', lastName: 'Whittingham' },
+      'mclain': { clientName: 'Michael Hixson', clientCode: 'HIX', lastName: 'Hixson' },
       'others': { clientName: 'Other Client', clientCode: 'OTH', lastName: 'Other' }
     };
 
