@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileText, Upload, BarChart3, Receipt, Plus, Users, Building2 } from 'lucide-react';
+import { Upload, BarChart3, Receipt, Plus, Users, Building2 } from 'lucide-react';
 
 const Navigation = () => {
   const location = useLocation();
@@ -20,8 +20,12 @@ const Navigation = () => {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center space-x-8">
             <Link to="/" className="flex items-center space-x-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-primary-500 rounded-lg">
-                <FileText className="h-6 w-6 text-white" />
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg overflow-hidden">
+                <img 
+                  src="/logo.svg" 
+                  alt="The Employers Choice Logo" 
+                  className="w-full h-full object-contain"
+                />
               </div>
               <div>
                 <span className="text-xl font-bold text-primary-500">The Employers Choice</span>
