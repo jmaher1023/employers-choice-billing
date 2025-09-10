@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileText, Upload, BarChart3, Receipt } from 'lucide-react';
+import { FileText, Upload, BarChart3, Receipt, Plus, Users, Building2 } from 'lucide-react';
 
 const Navigation = () => {
   const location = useLocation();
@@ -9,6 +9,9 @@ const Navigation = () => {
     { path: '/', label: 'Dashboard', icon: BarChart3 },
     { path: '/invoices', label: 'Invoices', icon: Receipt },
     { path: '/upload', label: 'Upload', icon: Upload },
+    { path: '/create-custom', label: 'Create Custom', icon: Plus },
+    { path: '/clients', label: 'Clients', icon: Users },
+    { path: '/businesses', label: 'Businesses', icon: Building2 },
   ];
 
   return (

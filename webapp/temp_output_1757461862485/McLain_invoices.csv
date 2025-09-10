@@ -1,8 +1,0 @@
-Invoice Number,Invoice Date,Company,Job Key,Reference Number,Job Title,Location,Quantity,Unit,Average Cost,Total
-USI25-03713610,"Jul 4, 2025",The Employers Choice,243eae2b72de5001,4042257-191-1,Insurance Representative,"Mobile, AL",114,click,0.49,55.75
-USI25-03713610,"Jul 4, 2025",The Employers Choice,fe6d8e12c4e18050,4042257-190-1,Insurance Representative,"Huntsville, AL",106,click,0.41,43.75
-,,,,,,,,,,SUBTOTAL - Invoice USI25-03713610
-,,,,,,,,,,99.50
-,,,,,,,,,,GRAND TOTAL + 10% - Invoice USI25-03713610
-,,,,,,,,,,109.45
-,,,,,,,,,,

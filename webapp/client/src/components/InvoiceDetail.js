@@ -10,7 +10,8 @@ import {
   FileText,
   Plus,
   CheckCircle,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react';
 
 const InvoiceDetail = () => {
@@ -21,8 +22,10 @@ const InvoiceDetail = () => {
   const [loading, setLoading] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newPayment, setNewPayment] = useState({ amount: '', notes: '' });
   const [emailData, setEmailData] = useState({ client_email: '', client_name: '' });
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   useEffect(() => {
     fetchInvoiceDetails();
@@ -105,6 +108,31 @@ const InvoiceDetail = () => {
     }
   };
 
+  const handleDeleteInvoice = async () => {
+    if (deleteConfirmation !== 'DELETE') {
+      toast.error('Please type "DELETE" to confirm deletion');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/invoices/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        toast.success('Invoice deleted successfully');
+        // Redirect to invoices list
+        window.location.href = '/invoices';
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to delete invoice');
+      }
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      toast.error('Failed to delete invoice');
+    }
+  };
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -180,6 +208,13 @@ const InvoiceDetail = () => {
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Payment
+          </button>
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete Invoice
           </button>
         </div>
       </div>
@@ -453,6 +488,58 @@ const InvoiceDetail = () => {
                 className="btn-brand"
               >
                 Send Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Delete Invoice</h3>
+            <div className="mb-4">
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to delete invoice <strong>{invoice?.invoice_number}</strong>? 
+                This action cannot be undone and will permanently remove:
+              </p>
+              <ul className="text-sm text-gray-600 list-disc list-inside mb-4">
+                <li>The invoice record</li>
+                <li>All invoice items ({items.length} items)</li>
+                <li>All payment records ({payments.length} payments)</li>
+              </ul>
+              <p className="text-red-600 font-medium mb-2">
+                Type <strong>DELETE</strong> to confirm:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="Type DELETE to confirm"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmation('');
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteInvoice}
+                disabled={deleteConfirmation !== 'DELETE'}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  deleteConfirmation === 'DELETE'
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Delete Invoice
               </button>
             </div>
           </div>

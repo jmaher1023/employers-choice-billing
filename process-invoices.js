@@ -2,10 +2,21 @@ const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+const sqlite3 = require('sqlite3').verbose();
 
 class InvoiceProcessor {
-  constructor() {
-    // Define location groups (same as your original code)
+  constructor(dbPath = './webapp/database.sqlite') {
+    // Initialize database connection
+    console.log('Connecting to database:', dbPath);
+    this.db = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error('Error opening database:', err.message);
+      } else {
+        console.log('Connected to database successfully');
+      }
+    });
+    
+    // Define business locations
     this.EVERETT_LOCATIONS = [
       "Maumelle", "Little Rock", "Conway", "Tyler", "Southaven", "Oxford", 
       "Fayetteville", "Dallas", "Searcy", "Jonesboro", "Rogers", "Jacksonville"
@@ -17,13 +28,10 @@ class InvoiceProcessor {
       "Birmingham", "Mobile", "Huntsville"
     ];
 
-    // Initialize grouped data storage
-    this.groupedData = {
-      everett: [],
-      whittingham: [],
-      mclain: [],
-      others: []
-    };
+    // Initialize client data storage
+    this.clientData = {};
+    this.businessAssignments = {};
+    this.clients = {}; // Will store client data from database
   }
 
   // Normalize data structure (same logic as your original code)
@@ -56,8 +64,78 @@ class InvoiceProcessor {
     return obj;
   }
 
-  // Group data by location (same logic as your original code)
-  groupByLocation(obj) {
+  // Load clients from database
+  async loadClients() {
+    return new Promise((resolve, reject) => {
+      this.db.all('SELECT * FROM clients', (err, rows) => {
+        if (err) {
+          console.error('Error loading clients from database:', err);
+          reject(err);
+          return;
+        }
+        
+        // Organize clients by business
+        this.clients = {};
+        rows.forEach(client => {
+          if (!this.clients[client.business]) {
+            this.clients[client.business] = [];
+          }
+          this.clients[client.business].push(client);
+        });
+        
+        console.log('Loaded clients from database:');
+        Object.entries(this.clients).forEach(([business, clients]) => {
+          console.log(`  ${business}: ${clients.map(c => c.name).join(', ')}`);
+        });
+        
+        resolve(this.clients);
+      });
+    });
+  }
+
+  // Extract client information based on business assignment and location
+  extractClientInfo(business, location) {
+    // If we have clients for this business, try to match by location
+    if (this.clients[business] && this.clients[business].length > 0) {
+      const city = location ? location.split(',')[0].trim() : '';
+      
+      // Find client whose locations include this city
+      for (const client of this.clients[business]) {
+        if (client.locations && client.locations.includes(city)) {
+          const lastName = client.name.split(' ').pop();
+          return {
+            clientName: client.name,
+            clientCode: lastName.substring(0, 3).toUpperCase(),
+            lastName: lastName,
+            clientId: client.id
+          };
+        }
+      }
+      
+      // If no specific match, use the first client for this business
+      const firstClient = this.clients[business][0];
+      const lastName = firstClient.name.split(' ').pop();
+      return {
+        clientName: firstClient.name,
+        clientCode: lastName.substring(0, 3).toUpperCase(),
+        lastName: lastName,
+        clientId: firstClient.id
+      };
+    }
+
+    // Fallback to default mapping if no clients in database
+    const businessToClient = {
+      'everett': { clientName: 'Jason Everett', clientCode: 'EVE', lastName: 'Everett' },
+      'whittingham': { clientName: 'Whittingham', clientCode: 'WHI', lastName: 'Whittingham' },
+      'mclain': { clientName: 'McLain', clientCode: 'MCL', lastName: 'McLain' },
+      'others': { clientName: 'Other Client', clientCode: 'OTH', lastName: 'Other' }
+    };
+
+    return businessToClient[business] || { clientName: 'Unknown Client', clientCode: 'UNK', lastName: 'Unknown' };
+  }
+
+  // Determine business based on location
+  determineBusiness(obj) {
     const loc = (obj.location || "").trim();
     const city = loc.split(",")[0];
     const job = (obj.job_title || "").trim();
@@ -74,6 +152,13 @@ class InvoiceProcessor {
     } else {
       return 'others';
     }
+  }
+
+  // Generate new invoice number
+  generateInvoiceNumber(originalInvoiceNumber, clientCode) {
+    // Remove USI25 prefix and replace with client code
+    const cleanNumber = originalInvoiceNumber.replace(/^USI25-?/, '');
+    return `${clientCode}-${cleanNumber}`;
   }
 
   // Extract invoice number and date from CSV header
@@ -154,6 +239,19 @@ class InvoiceProcessor {
           formatted.invoice_number = invoiceNumber;
           formatted.invoice_date = invoiceDate;
           
+          // Determine business first
+          formatted.business = this.determineBusiness(formatted);
+          
+          // Extract client information based on business and location
+          const clientInfo = this.extractClientInfo(formatted.business, formatted.location);
+          formatted.client_name = clientInfo.clientName;
+          formatted.client_code = clientInfo.clientCode;
+          formatted.last_name = clientInfo.lastName;
+          formatted.client_id = clientInfo.clientId;
+          
+          // Generate new invoice number
+          formatted.new_invoice_number = this.generateInvoiceNumber(invoiceNumber, clientInfo.clientCode);
+          
           // Only include rows with reference_number and job_title
           if (formatted.reference_number && formatted.job_title) {
             results.push(formatted);
@@ -193,40 +291,53 @@ class InvoiceProcessor {
         const filePath = path.join(inputDir, file);
         const data = await this.processCSVFile(filePath);
         
-        // Group the data
+        // Group the data by client
         data.forEach(obj => {
-          const group = this.groupByLocation(obj);
-          this.groupedData[group].push(obj);
+          const clientKey = obj.client_name;
+          if (!this.clientData[clientKey]) {
+            this.clientData[clientKey] = {
+              clientName: obj.client_name,
+              clientCode: obj.client_code,
+              business: obj.business,
+              locations: new Set(),
+              invoices: new Set(),
+              records: []
+            };
+          }
+          
+          this.clientData[clientKey].records.push(obj);
+          this.clientData[clientKey].locations.add(obj.location);
+          this.clientData[clientKey].invoices.add(obj.new_invoice_number);
         });
       }
 
-      console.log('\nGrouping summary:');
-      console.log(`  Everett: ${this.groupedData.everett.length} records`);
-      console.log(`  Whittingham: ${this.groupedData.whittingham.length} records`);
-      console.log(`  McLain: ${this.groupedData.mclain.length} records`);
-      console.log(`  Others: ${this.groupedData.others.length} records`);
+      console.log('\nClient grouping summary:');
+      Object.entries(this.clientData).forEach(([clientName, data]) => {
+        console.log(`  ${clientName} (${data.clientCode}): ${data.records.length} records, ${data.invoices.size} invoices, ${data.locations.size} locations`);
+        console.log(`    Business: ${data.business}, Locations: ${Array.from(data.locations).join(', ')}`);
+      });
 
     } catch (error) {
       throw new Error(`Error processing directory: ${error.message}`);
     }
   }
 
-  // Add subtotals and grand total to grouped data
-  addSummaryRows(groupedData) {
+  // Add subtotals and grand total to client data
+  addSummaryRows(clientData) {
     const processedData = {};
     
-    for (const [groupKey, records] of Object.entries(groupedData)) {
-      if (records.length === 0) {
-        processedData[groupKey] = [];
+    for (const [clientName, clientInfo] of Object.entries(clientData)) {
+      if (clientInfo.records.length === 0) {
+        processedData[clientName] = [];
         continue;
       }
       
       const processedRecords = [];
       const invoiceGroups = {};
       
-      // Group records by invoice number
-      for (const record of records) {
-        const invoiceNum = record.invoice_number;
+      // Group records by new invoice number
+      for (const record of clientInfo.records) {
+        const invoiceNum = record.new_invoice_number;
         if (!invoiceGroups[invoiceNum]) {
           invoiceGroups[invoiceNum] = [];
         }
@@ -245,6 +356,7 @@ class InvoiceProcessor {
         
         // Add subtotal row
         const subtotalRow = {
+          new_invoice_number: '',
           invoice_number: '',
           invoice_date: '',
           company: '',
@@ -255,12 +367,16 @@ class InvoiceProcessor {
           quantity: '',
           unit: '',
           average_cost: '',
-          total: `SUBTOTAL - Invoice ${invoiceNum}`
+          total: `SUBTOTAL - Invoice ${invoiceNum}`,
+          client_name: '',
+          client_code: '',
+          business: ''
         };
         processedRecords.push(subtotalRow);
         
         // Add subtotal amount row
         const subtotalAmountRow = {
+          new_invoice_number: '',
           invoice_number: '',
           invoice_date: '',
           company: '',
@@ -271,13 +387,17 @@ class InvoiceProcessor {
           quantity: '',
           unit: '',
           average_cost: '',
-          total: subtotal.toFixed(2)
+          total: subtotal.toFixed(2),
+          client_name: '',
+          client_code: '',
+          business: ''
         };
         processedRecords.push(subtotalAmountRow);
         
         // Add grand total with 10% markup row for this invoice
         const grandTotalWithMarkup = subtotal * 1.10;
         const grandTotalMarkupRow = {
+          new_invoice_number: '',
           invoice_number: '',
           invoice_date: '',
           company: '',
@@ -288,12 +408,16 @@ class InvoiceProcessor {
           quantity: '',
           unit: '',
           average_cost: '',
-          total: `GRAND TOTAL + 10% - Invoice ${invoiceNum}`
+          total: `GRAND TOTAL + 10% - Invoice ${invoiceNum}`,
+          client_name: '',
+          client_code: '',
+          business: ''
         };
         processedRecords.push(grandTotalMarkupRow);
         
         // Add grand total with markup amount row for this invoice
         const grandTotalMarkupAmountRow = {
+          new_invoice_number: '',
           invoice_number: '',
           invoice_date: '',
           company: '',
@@ -304,12 +428,16 @@ class InvoiceProcessor {
           quantity: '',
           unit: '',
           average_cost: '',
-          total: grandTotalWithMarkup.toFixed(2)
+          total: grandTotalWithMarkup.toFixed(2),
+          client_name: '',
+          client_code: '',
+          business: ''
         };
         processedRecords.push(grandTotalMarkupAmountRow);
         
         // Add empty row for separation
         const emptyRow = {
+          new_invoice_number: '',
           invoice_number: '',
           invoice_date: '',
           company: '',
@@ -320,23 +448,27 @@ class InvoiceProcessor {
           quantity: '',
           unit: '',
           average_cost: '',
-          total: ''
+          total: '',
+          client_name: '',
+          client_code: '',
+          business: ''
         };
         processedRecords.push(emptyRow);
       }
       
-      processedData[groupKey] = processedRecords;
+      processedData[clientName] = processedRecords;
     }
     
     return processedData;
   }
 
-  // Write grouped data to separate CSV files
-  async writeGroupedFiles(outputDir) {
+  // Write client data to separate CSV files
+  async writeClientFiles(outputDir) {
     const csvWriterConfig = {
       path: '',
       header: [
-        { id: 'invoice_number', title: 'Invoice Number' },
+        { id: 'new_invoice_number', title: 'New Invoice Number' },
+        { id: 'invoice_number', title: 'Original Invoice Number' },
         { id: 'invoice_date', title: 'Invoice Date' },
         { id: 'company', title: 'Company' },
         { id: 'job_key', title: 'Job Key' },
@@ -346,38 +478,37 @@ class InvoiceProcessor {
         { id: 'quantity', title: 'Quantity' },
         { id: 'unit', title: 'Unit' },
         { id: 'average_cost', title: 'Average Cost' },
-        { id: 'total', title: 'Total' }
+        { id: 'total', title: 'Total' },
+        { id: 'client_name', title: 'Client Name' },
+        { id: 'client_code', title: 'Client Code' },
+        { id: 'client_id', title: 'Client ID' },
+        { id: 'business', title: 'Business' }
       ]
     };
-
-    const groups = [
-      { key: 'everett', name: 'Everett' },
-      { key: 'whittingham', name: 'Whittingham' },
-      { key: 'mclain', name: 'McLain' },
-      { key: 'others', name: 'Others' }
-    ];
 
     // Ensure output directory exists
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Add summary rows to grouped data
-    const processedGroupedData = this.addSummaryRows(this.groupedData);
+    // Add summary rows to client data
+    const processedClientData = this.addSummaryRows(this.clientData);
 
-    // Write each group to a separate CSV file
-    for (const group of groups) {
-      if (processedGroupedData[group.key].length > 0) {
-        const outputPath = path.join(outputDir, `${group.name}_invoices.csv`);
+    // Write each client to a separate CSV file
+    for (const [clientName, clientRecords] of Object.entries(processedClientData)) {
+      if (clientRecords.length > 0) {
+        // Create safe filename from client name
+        const safeClientName = clientName.replace(/[^a-zA-Z0-9]/g, '_');
+        const outputPath = path.join(outputDir, `${safeClientName}_invoices.csv`);
         const writer = createCsvWriter({
           ...csvWriterConfig,
           path: outputPath
         });
 
-        await writer.writeRecords(processedGroupedData[group.key]);
-        console.log(`Created ${outputPath} with ${processedGroupedData[group.key].length} records (including summary rows)`);
+        await writer.writeRecords(clientRecords);
+        console.log(`Created ${outputPath} with ${clientRecords.length} records (including summary rows)`);
       } else {
-        console.log(`No records found for ${group.name} group - skipping file creation`);
+        console.log(`No records found for ${clientName} - skipping file creation`);
       }
     }
   }
@@ -387,14 +518,23 @@ class InvoiceProcessor {
     try {
       console.log('Starting invoice processing...\n');
       
+      // Load clients from database first
+      await this.loadClients();
+      
       await this.processDirectory(inputDir);
-      await this.writeGroupedFiles(outputDir);
+      await this.writeClientFiles(outputDir);
       
       console.log('\nProcessing completed successfully!');
+      console.log(`\nGenerated ${Object.keys(this.clientData).length} client invoice files.`);
       
     } catch (error) {
       console.error('Error:', error.message);
       process.exit(1);
+    } finally {
+      // Close database connection
+      if (this.db) {
+        this.db.close();
+      }
     }
   }
 }
