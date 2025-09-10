@@ -817,7 +817,7 @@ app.get('/api/invoices', (req, res) => {
   }
   
   if (client) {
-    conditions.push('i.client = ?');
+    conditions.push('i.client_id = ?');
     params.push(client);
   }
   

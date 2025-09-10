@@ -21,14 +21,14 @@ const CreateCustomInvoice = () => {
   const [selectedInvoices, setSelectedInvoices] = useState([]);
   const [availableClients, setAvailableClients] = useState([]);
   const [availableLocations, setAvailableLocations] = useState([]);
+  const [availableBusinesses, setAvailableBusinesses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  const businesses = [
-    { value: 'everett', label: 'Everett' },
-    { value: 'whittingham', label: 'Whittingham' },
-    { value: 'mclain', label: 'McLain' }
-  ];
+  // Load businesses on component mount
+  useEffect(() => {
+    fetchBusinesses();
+  }, []);
 
   // Load clients when business changes
   useEffect(() => {
@@ -39,6 +39,17 @@ const CreateCustomInvoice = () => {
       setClientId('');
     }
   }, [business]);
+
+  const fetchBusinesses = async () => {
+    try {
+      const response = await fetch('/api/businesses');
+      const data = await response.json();
+      setAvailableBusinesses(data.businesses || []);
+    } catch (error) {
+      console.error('Error fetching businesses:', error);
+      toast.error('Failed to load businesses');
+    }
+  };
 
   const fetchClients = async () => {
     try {
@@ -188,9 +199,9 @@ const CreateCustomInvoice = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
               <option value="">Select Business</option>
-              {businesses.map(businessOption => (
-                <option key={businessOption.value} value={businessOption.value}>
-                  {businessOption.label}
+              {availableBusinesses.map(businessOption => (
+                <option key={businessOption.id} value={businessOption.id}>
+                  {businessOption.name}
                 </option>
               ))}
             </select>
@@ -387,7 +398,7 @@ const CreateCustomInvoice = () => {
               <strong>Selected Invoices:</strong> {selectedInvoices.length} invoices will be combined
             </p>
             <p className="text-sm text-blue-600 mt-1">
-              Business: {business} | 
+              Business: {availableBusinesses.find(b => b.id === business)?.name || business} | 
               {clientId && ` Client: ${availableClients.find(c => c.id === clientId)?.name || 'Selected'} |`}
               {locationFilter && ` Location Filter: ${locationFilter}`}
             </p>

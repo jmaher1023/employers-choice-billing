@@ -12,11 +12,12 @@ import {
 
 const InvoiceList = () => {
   const [invoices, setInvoices] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     search: '',
     status: '',
-    location_group: '',
+    client: '',
     page: 1,
     limit: 20,
     sort_by: 'created_at',
@@ -26,6 +27,7 @@ const InvoiceList = () => {
 
   useEffect(() => {
     fetchInvoices();
+    fetchClients();
   }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchInvoices = async () => {
@@ -45,6 +47,16 @@ const InvoiceList = () => {
       console.error('Error fetching invoices:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchClients = async () => {
+    try {
+      const response = await fetch('/api/clients');
+      const data = await response.json();
+      setClients(data.clients || []);
+    } catch (error) {
+      console.error('Error fetching clients:', error);
     }
   };
 
@@ -157,15 +169,16 @@ const InvoiceList = () => {
           </select>
 
           <select
-            value={filters.location_group}
-            onChange={(e) => handleFilterChange('location_group', e.target.value)}
+            value={filters.client}
+            onChange={(e) => handleFilterChange('client', e.target.value)}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
-            <option value="">All Locations</option>
-            <option value="everett">Everett</option>
-            <option value="whittingham">Whittingham</option>
-            <option value="mclain">McLain</option>
-            <option value="others">Others</option>
+            <option value="">All Clients</option>
+            {clients.map(client => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
           </select>
 
           <select
@@ -199,7 +212,7 @@ const InvoiceList = () => {
                   Date
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
-                  Location
+                  Client
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                   Status
@@ -233,7 +246,7 @@ const InvoiceList = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                      {invoice.location_group}
+                      {clients.find(c => c.id === invoice.client_id)?.name || invoice.client_id || 'Unknown Client'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
