@@ -1,0 +1,10 @@
+New Invoice Number,Original Invoice Number,Invoice Date,Company,Job Key,Reference Number,Job Title,Location,Quantity,Unit,Average Cost,Total,Client Name,Client Code,Client ID,Business
+WHI-03959467,USI25-03959467,"Jul 26, 2025",The Employers Choice,fd7cf2f02cef8860,4042257-188-1,Sales Associate,"Indianapolis, IN",74,click,1.02,75.81,Whittingham,WHI,e545743f-aad8-43df-8be6-4796209acde9,whittingham
+WHI-03959467,USI25-03959467,"Jul 26, 2025",The Employers Choice,3fb4258b211237c9,4042257-171-1,Insurance Representative,"Indianapolis, IN",92,click,0.94,86.20,Whittingham,WHI,e545743f-aad8-43df-8be6-4796209acde9,whittingham
+WHI-03959467,USI25-03959467,"Jul 26, 2025",The Employers Choice,4fe7ba770e7281bb,4042257-192-1,Insurance Representative,"Evansville, IN",50,click,1.45,72.68,Whittingham,WHI,e545743f-aad8-43df-8be6-4796209acde9,whittingham
+WHI-03959467,USI25-03959467,"Jul 26, 2025",The Employers Choice,4e1290f21e69b986,4042257-172-4,Insurance Representative,"Carmel, IN",123,click,0.87,106.73,Whittingham,WHI,e545743f-aad8-43df-8be6-4796209acde9,whittingham
+,,,,,,,,,,,SUBTOTAL - Invoice WHI-03959467,,,,
+,,,,,,,,,,,341.42,,,,
+,,,,,,,,,,,GRAND TOTAL + 10% - Invoice WHI-03959467,,,,
+,,,,,,,,,,,375.56,,,,
+,,,,,,,,,,,,,,,
