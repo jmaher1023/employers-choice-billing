@@ -8,10 +8,16 @@
     "process": "node process-invoices.js"
   },
   "dependencies": {
-    "csv-parser": "^3.0.0",
-    "csv-writer": "^1.6.0"
+    "csv-parser": "^3.2.0",
+    "csv-writer": "^1.6.0",
+    "sqlite3": "^5.1.7"
   },
-  "keywords": ["csv", "invoice", "processing", "grouping"],
+  "keywords": [
+    "csv",
+    "invoice",
+    "processing",
+    "grouping"
+  ],
   "author": "",
   "license": "MIT"
 }

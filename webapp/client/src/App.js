@@ -7,6 +7,9 @@ import Dashboard from './components/Dashboard';
 import InvoiceList from './components/InvoiceList';
 import InvoiceDetail from './components/InvoiceDetail';
 import UploadInvoices from './components/UploadInvoices';
+import CreateCustomInvoice from './components/CreateCustomInvoice';
+import ClientManagement from './components/ClientManagement';
+import BusinessManagement from './components/BusinessManagement';
 import Navigation from './components/Navigation';
 
 function App() {
@@ -20,6 +23,9 @@ function App() {
             <Route path="/invoices" element={<InvoiceList />} />
             <Route path="/invoices/:id" element={<InvoiceDetail />} />
             <Route path="/upload" element={<UploadInvoices />} />
+            <Route path="/create-custom" element={<CreateCustomInvoice />} />
+            <Route path="/clients" element={<ClientManagement />} />
+            <Route path="/businesses" element={<BusinessManagement />} />
           </Routes>
         </main>
         <ToastContainer
