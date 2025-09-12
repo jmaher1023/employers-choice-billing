@@ -6,8 +6,11 @@ const fs = require('fs');
 const sqlite3 = require('sqlite3').verbose();
 const nodemailer = require('nodemailer');
 const { v4: uuidv4 } = require('uuid');
-const moment = require('moment');
+const moment = require('moment-timezone');
 require('dotenv').config();
+
+// Set default timezone to US Central Time
+moment.tz.setDefault('America/Chicago');
 
 // Import our invoice processor
 const InvoiceProcessor = require('../process-invoices.js');
@@ -589,7 +592,7 @@ app.post('/api/invoices/custom', async (req, res) => {
       db.run(
         `INSERT INTO invoices (id, invoice_number, invoice_date, business, client_id, subtotal, grand_total, status) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [customInvoiceId, mergedInvoiceNumber, new Date().toISOString().split('T')[0], mappedBusinessName, client_id || null, totalSubtotal, grandTotal, 'pending'],
+        [customInvoiceId, mergedInvoiceNumber, moment.tz('America/Chicago').format('YYYY-MM-DD'), mappedBusinessName, client_id || null, totalSubtotal, grandTotal, 'pending'],
         function(err) {
           if (err) {
             console.error('Error creating custom invoice:', err);
@@ -829,9 +832,9 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
                   const itemId = uuidv4();
                   const itemPromise = new Promise((itemResolve, itemReject) => {
                     db.run(
-                      `INSERT INTO invoice_items (id, invoice_id, company, job_key, reference_number, job_title, location, quantity, unit, average_cost, total) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                      [itemId, invoiceId, record.company, record.job_key, record.reference_number, record.job_title, record.location, record.quantity, record.unit, record.average_cost, record.total],
+                      `INSERT INTO invoice_items (id, invoice_id, company, job_key, reference_number, job_title, location, quantity, unit, average_cost, total, original_invoice_date) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                      [itemId, invoiceId, record.company, record.job_key, record.reference_number, record.job_title, record.location, record.quantity, record.unit, record.average_cost, record.total, record.original_invoice_date || record.invoice_date],
                       function(err) {
                         if (err) {
                           console.error('Error inserting invoice item:', err);
@@ -1069,6 +1072,88 @@ app.patch('/api/invoices/:id/status', (req, res) => {
   );
 });
 
+// Bulk update invoice status
+app.patch('/api/invoices/bulk/status', (req, res) => {
+  const { invoice_ids, status } = req.body;
+  
+  if (!Array.isArray(invoice_ids) || invoice_ids.length === 0) {
+    return res.status(400).json({ error: 'Invoice IDs array is required' });
+  }
+  
+  if (!['pending', 'sent', 'paid', 'overdue'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+  
+  const placeholders = invoice_ids.map(() => '?').join(',');
+  const query = `UPDATE invoices SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`;
+  
+  db.run(query, [status, ...invoice_ids], function(err) {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `Status updated successfully for ${this.changes} invoices` 
+    });
+  });
+});
+
+// Bulk delete invoices
+app.delete('/api/invoices/bulk', (req, res) => {
+  const { invoice_ids } = req.body;
+  
+  if (!Array.isArray(invoice_ids) || invoice_ids.length === 0) {
+    return res.status(400).json({ error: 'Invoice IDs array is required' });
+  }
+  
+  // First, get the invoices to show what we're deleting
+  const placeholders = invoice_ids.map(() => '?').join(',');
+  const selectQuery = `SELECT invoice_number FROM invoices WHERE id IN (${placeholders})`;
+  
+  db.all(selectQuery, invoice_ids, (err, invoices) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (invoices.length === 0) {
+      return res.status(404).json({ error: 'No invoices found' });
+    }
+    
+    // Delete invoice items first (foreign key constraint)
+    db.run(`DELETE FROM invoice_items WHERE invoice_id IN (${placeholders})`, invoice_ids, function(err) {
+      if (err) {
+        console.error('Error deleting invoice items:', err);
+        return res.status(500).json({ error: 'Failed to delete invoice items' });
+      }
+      
+      // Delete payments
+      db.run(`DELETE FROM payments WHERE invoice_id IN (${placeholders})`, invoice_ids, function(err) {
+        if (err) {
+          console.error('Error deleting payments:', err);
+          return res.status(500).json({ error: 'Failed to delete payments' });
+        }
+        
+        // Finally, delete the invoices
+        db.run(`DELETE FROM invoices WHERE id IN (${placeholders})`, invoice_ids, function(err) {
+          if (err) {
+            console.error('Error deleting invoices:', err);
+            return res.status(500).json({ error: 'Failed to delete invoices' });
+          }
+          
+          res.json({ 
+            success: true, 
+            message: `${this.changes} invoices deleted successfully`,
+            deleted_invoices: invoices.map(inv => inv.invoice_number)
+          });
+        });
+      });
+    });
+  });
+});
+
 // Add payment
 app.post('/api/invoices/:id/payments', (req, res) => {
   const invoiceId = req.params.id;
@@ -1166,11 +1251,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
         };
 
         const formatDate = (dateString) => {
-          return new Date(dateString).toLocaleDateString('en-US', {
-            month: '2-digit',
-            day: '2-digit',
-            year: 'numeric'
-          });
+          return moment.tz(dateString, 'America/Chicago').format('MM/DD/YYYY');
         };
 
         const getDateRange = () => {

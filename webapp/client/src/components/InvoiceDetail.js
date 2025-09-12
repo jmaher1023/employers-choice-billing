@@ -146,16 +146,23 @@ const InvoiceDetail = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    // Handle date strings consistently to avoid timezone issues
+    // Handle date strings consistently in Central Time
     const date = new Date(dateString + 'T00:00:00');
-    return date.toLocaleDateString();
+    return date.toLocaleDateString('en-US', {
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
   };
 
   const formatDateForInput = (dateString) => {
     if (!dateString) return '';
-    // Ensure we get the correct date for input fields
+    // Ensure we get the correct date for input fields in Central Time
     const date = new Date(dateString + 'T00:00:00');
-    return date.toISOString().split('T')[0];
+    return date.toLocaleDateString('en-CA', {
+      timeZone: 'America/Chicago'
+    });
   };
 
   const isCustomInvoice = invoice?.invoice_number?.endsWith('-MERGED');

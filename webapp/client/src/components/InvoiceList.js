@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { 
   Search, 
   Eye, 
@@ -7,7 +8,9 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  FileText
+  FileText,
+  Trash2,
+  Edit3
 } from 'lucide-react';
 
 const InvoiceList = () => {
@@ -24,6 +27,10 @@ const InvoiceList = () => {
     sort_order: 'DESC'
   });
   const [pagination, setPagination] = useState({});
+  const [selectedInvoices, setSelectedInvoices] = useState(new Set());
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   useEffect(() => {
     fetchInvoices();
@@ -86,6 +93,90 @@ const InvoiceList = () => {
     }
   };
 
+  const handleSelectInvoice = (invoiceId) => {
+    const newSelected = new Set(selectedInvoices);
+    if (newSelected.has(invoiceId)) {
+      newSelected.delete(invoiceId);
+    } else {
+      newSelected.add(invoiceId);
+    }
+    setSelectedInvoices(newSelected);
+    setShowBulkActions(newSelected.size > 0);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedInvoices.size === invoices.length) {
+      setSelectedInvoices(new Set());
+      setShowBulkActions(false);
+    } else {
+      setSelectedInvoices(new Set(invoices.map(invoice => invoice.id)));
+      setShowBulkActions(true);
+    }
+  };
+
+  const handleBulkStatusChange = async (newStatus) => {
+    try {
+      const response = await fetch('/api/invoices/bulk/status', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          invoice_ids: Array.from(selectedInvoices), 
+          status: newStatus 
+        })
+      });
+
+      if (response.ok) {
+        toast.success(`Status updated successfully for ${selectedInvoices.size} invoices`);
+        setSelectedInvoices(new Set());
+        setShowBulkActions(false);
+        fetchInvoices(); // Refresh the list
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to update status');
+      }
+    } catch (error) {
+      console.error('Error updating bulk status:', error);
+      toast.error('Failed to update status');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (deleteConfirmation !== 'DELETE') {
+      toast.error('Please type "DELETE" to confirm deletion');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/invoices/bulk', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          invoice_ids: Array.from(selectedInvoices)
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.success(result.message);
+        setSelectedInvoices(new Set());
+        setShowBulkActions(false);
+        setShowDeleteModal(false);
+        setDeleteConfirmation('');
+        fetchInvoices(); // Refresh the list
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to delete invoices');
+      }
+    } catch (error) {
+      console.error('Error deleting invoices:', error);
+      toast.error('Failed to delete invoices');
+    }
+  };
+
   const getStatusIcon = (status) => {
     switch (status) {
       case 'paid':
@@ -124,7 +215,14 @@ const InvoiceList = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
+    // Ensure consistent date formatting in Central Time
+    const date = new Date(dateString + 'T00:00:00');
+    return date.toLocaleDateString('en-US', {
+      timeZone: 'America/Chicago',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
   };
 
   if (loading) {
@@ -141,6 +239,48 @@ const InvoiceList = () => {
         <h1 className="text-3xl font-bold text-gray-900">Invoices</h1>
         <p className="mt-2 text-gray-600">Manage and track your invoices</p>
       </div>
+
+      {/* Bulk Actions */}
+      {showBulkActions && (
+        <div className="card-brand p-4 bg-blue-50 border-blue-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <span className="text-sm font-medium text-blue-900">
+                {selectedInvoices.size} invoice{selectedInvoices.size !== 1 ? 's' : ''} selected
+              </span>
+              <div className="flex items-center space-x-2">
+                <select
+                  onChange={(e) => handleBulkStatusChange(e.target.value)}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  defaultValue=""
+                >
+                  <option value="">Change Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="sent">Sent</option>
+                  <option value="paid">Paid</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </button>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedInvoices(new Set());
+                setShowBulkActions(false);
+              }}
+              className="text-sm text-gray-600 hover:text-gray-800"
+            >
+              Clear Selection
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card-brand p-6">
@@ -206,6 +346,14 @@ const InvoiceList = () => {
             <thead>
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    checked={selectedInvoices.size === invoices.length && invoices.length > 0}
+                    onChange={handleSelectAll}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
                   Invoice
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
@@ -231,6 +379,14 @@ const InvoiceList = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {invoices.map((invoice) => (
                 <tr key={invoice.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="checkbox"
+                      checked={selectedInvoices.has(invoice.id)}
+                      onChange={() => handleSelectInvoice(invoice.id)}
+                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900">
@@ -321,6 +477,58 @@ const InvoiceList = () => {
             >
               Next
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Delete Invoices</h3>
+            <div className="mb-4">
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to delete <strong>{selectedInvoices.size} invoice{selectedInvoices.size !== 1 ? 's' : ''}</strong>? 
+                This action cannot be undone and will permanently remove:
+              </p>
+              <ul className="text-sm text-gray-600 list-disc list-inside mb-4">
+                <li>All selected invoice records</li>
+                <li>All invoice items for these invoices</li>
+                <li>All payment records for these invoices</li>
+              </ul>
+              <p className="text-red-600 font-medium mb-2">
+                Type <strong>DELETE</strong> to confirm:
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="Type DELETE to confirm"
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmation('');
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={deleteConfirmation !== 'DELETE'}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  deleteConfirmation === 'DELETE'
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Delete Invoices
+              </button>
+            </div>
           </div>
         </div>
       )}
