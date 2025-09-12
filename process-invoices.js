@@ -291,6 +291,7 @@ class InvoiceProcessor {
           // Add invoice metadata
           formatted.invoice_number = invoiceNumber;
           formatted.invoice_date = invoiceDate;
+          formatted.original_invoice_date = invoiceDate; // Store original date for reference
           
           // Determine business first
           formatted.business = this.determineBusiness(formatted);
