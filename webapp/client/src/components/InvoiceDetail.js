@@ -24,15 +24,25 @@ const InvoiceDetail = () => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [newPayment, setNewPayment] = useState({ amount: '', notes: '' });
-  const [emailData, setEmailData] = useState({ client_email: '', client_name: '', message: '', notes: '' });
+  const [emailData, setEmailData] = useState({ 
+    client_email: '', 
+    client_name: '', 
+    message: '', 
+    notes: '',
+    invoice_date_from: '',
+    invoice_date_to: '',
+    custom_notes: ''
+  });
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   const [editingItemData, setEditingItemData] = useState({});
   const [editingHeader, setEditingHeader] = useState(false);
   const [editingHeaderData, setEditingHeaderData] = useState({});
+  const [clients, setClients] = useState([]);
 
   useEffect(() => {
     fetchInvoiceDetails();
+    fetchClients();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchInvoiceDetails = async () => {
@@ -49,6 +59,16 @@ const InvoiceDetail = () => {
       toast.error('Failed to load invoice details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchClients = async () => {
+    try {
+      const response = await fetch('/api/clients');
+      const data = await response.json();
+      setClients(data.clients || []);
+    } catch (error) {
+      console.error('Error fetching clients:', error);
     }
   };
 
@@ -82,6 +102,18 @@ const InvoiceDetail = () => {
     }
   };
 
+  const openEmailModal = () => {
+    // Pre-populate client information if available
+    const client = clients.find(c => c.id === invoice?.client_id);
+    if (client) {
+      setEmailData(prev => ({
+        ...prev,
+        client_name: client.name
+      }));
+    }
+    setShowEmailModal(true);
+  };
+
   const handleSendEmail = async () => {
     if (!emailData.client_email) {
       toast.error('Please enter client email');
@@ -99,7 +131,15 @@ const InvoiceDetail = () => {
 
       if (response.ok) {
         toast.success('Invoice sent successfully');
-        setEmailData({ client_email: '', client_name: '', message: '', notes: '' });
+        setEmailData({ 
+          client_email: '', 
+          client_name: '', 
+          message: '', 
+          notes: '',
+          invoice_date_from: '',
+          invoice_date_to: '',
+          custom_notes: ''
+        });
         setShowEmailModal(false);
         fetchInvoiceDetails(); // Refresh data
       } else {
@@ -148,6 +188,10 @@ const InvoiceDetail = () => {
     if (!dateString) return '-';
     // Handle date strings consistently in Central Time
     const date = new Date(dateString + 'T00:00:00');
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return '-';
+    }
     return date.toLocaleDateString('en-US', {
       timeZone: 'America/Chicago',
       year: 'numeric',
@@ -160,12 +204,16 @@ const InvoiceDetail = () => {
     if (!dateString) return '';
     // Ensure we get the correct date for input fields in Central Time
     const date = new Date(dateString + 'T00:00:00');
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return '';
+    }
     return date.toLocaleDateString('en-CA', {
       timeZone: 'America/Chicago'
     });
   };
 
-  const isCustomInvoice = invoice?.invoice_number?.endsWith('-MERGED');
+  // const isCustomInvoice = invoice?.invoice_number?.endsWith('-MERGED');
 
   const startEditingItem = (item) => {
     setEditingItem(item.id);
@@ -302,7 +350,7 @@ const InvoiceDetail = () => {
         </div>
         <div className="flex space-x-3">
           <button
-            onClick={() => setShowEmailModal(true)}
+            onClick={openEmailModal}
             className="btn-brand-secondary flex items-center"
           >
             <Mail className="h-4 w-4 mr-2" />
@@ -737,14 +785,48 @@ const InvoiceDetail = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes (optional)
+                  Invoice Date From (optional)
+                </label>
+                <input
+                  type="date"
+                  value={emailData.invoice_date_from}
+                  onChange={(e) => setEmailData(prev => ({ ...prev, invoice_date_from: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Invoice Date To (optional)
+                </label>
+                <input
+                  type="date"
+                  value={emailData.invoice_date_to}
+                  onChange={(e) => setEmailData(prev => ({ ...prev, invoice_date_to: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Custom Notes (optional)
+                </label>
+                <textarea
+                  value={emailData.custom_notes}
+                  onChange={(e) => setEmailData(prev => ({ ...prev, custom_notes: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  rows="3"
+                  placeholder="Custom notes to replace the default 'Combined billing from...' text"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Additional Notes (optional)
                 </label>
                 <textarea
                   value={emailData.notes}
                   onChange={(e) => setEmailData(prev => ({ ...prev, notes: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   rows="3"
-                  placeholder="Notes to include in the invoice PDF..."
+                  placeholder="Additional notes to include in the invoice..."
                 />
               </div>
             </div>

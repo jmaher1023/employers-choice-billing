@@ -5,8 +5,7 @@ import {
   Plus, 
   Edit, 
   Trash2,
-  Save,
-  X
+  Save
 } from 'lucide-react';
 
 const ClientManagement = () => {
