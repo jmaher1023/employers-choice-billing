@@ -3,9 +3,6 @@ import { toast } from 'react-toastify';
 import { 
   ArrowLeft, 
   Search, 
-  Calendar, 
-  MapPin, 
-  FileText,
   Plus,
   CheckSquare,
   Square
@@ -38,7 +35,7 @@ const CreateCustomInvoice = () => {
       setAvailableClients([]);
       setClientId('');
     }
-  }, [business]);
+  }, [business]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchBusinesses = async () => {
     try {

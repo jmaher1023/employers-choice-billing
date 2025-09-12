@@ -234,10 +234,31 @@ class InvoiceProcessor {
       if (line.includes('Itemization details')) {
         const dateMatch = line.match(/Itemization details\s+(.+)/);
         if (dateMatch) {
-          invoiceDate = dateMatch[1].trim().replace(/"/g, ''); // Remove any quotes
+          let rawDate = dateMatch[1].trim().replace(/"/g, ''); // Remove any quotes
+          
+          // Try to parse and format the date properly
+          const parsedDate = new Date(rawDate);
+          if (!isNaN(parsedDate.getTime())) {
+            // Format as YYYY-MM-DD for database storage
+            invoiceDate = parsedDate.toISOString().split('T')[0];
+          } else {
+            // If parsing fails, try to extract just the date part
+            const dateOnlyMatch = rawDate.match(/(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{1,2}-\d{1,2})/);
+            if (dateOnlyMatch) {
+              const dateOnly = new Date(dateOnlyMatch[1]);
+              if (!isNaN(dateOnly.getTime())) {
+                invoiceDate = dateOnly.toISOString().split('T')[0];
+              }
+            }
+          }
         }
         break;
       }
+    }
+    
+    // If no valid date was found, use current date as fallback
+    if (!invoiceDate) {
+      invoiceDate = new Date().toISOString().split('T')[0];
     }
     
     return { invoiceNumber, invoiceDate };

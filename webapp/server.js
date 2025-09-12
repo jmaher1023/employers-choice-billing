@@ -156,6 +156,23 @@ db.serialize(() => {
       console.error('Error adding original_invoice_date column:', err);
     }
   });
+
+  // Fix any invalid dates in the database
+  db.run(`UPDATE invoices SET invoice_date = date('now') WHERE invoice_date IS NULL OR invoice_date = '' OR invoice_date = 'Invalid Date'`, (err) => {
+    if (err) {
+      console.error('Error fixing invalid dates:', err);
+    } else {
+      console.log('Fixed any invalid dates in invoices table');
+    }
+  });
+
+  db.run(`UPDATE invoice_items SET original_invoice_date = date('now') WHERE original_invoice_date IS NULL OR original_invoice_date = '' OR original_invoice_date = 'Invalid Date'`, (err) => {
+    if (err) {
+      console.error('Error fixing invalid dates in invoice_items:', err);
+    } else {
+      console.log('Fixed any invalid dates in invoice_items table');
+    }
+  });
 });
 
 // Email webhook configuration
@@ -999,6 +1016,60 @@ app.get('/api/invoices/:id', (req, res) => {
   });
 });
 
+// Bulk delete invoices (must be before single delete route)
+app.delete('/api/invoices/bulk', (req, res) => {
+  const { invoice_ids } = req.body;
+  
+  if (!Array.isArray(invoice_ids) || invoice_ids.length === 0) {
+    return res.status(400).json({ error: 'Invoice IDs array is required' });
+  }
+  
+  // First, get the invoices to show what we're deleting
+  const placeholders = invoice_ids.map(() => '?').join(',');
+  const selectQuery = `SELECT invoice_number FROM invoices WHERE id IN (${placeholders})`;
+  
+  db.all(selectQuery, invoice_ids, (err, invoices) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (invoices.length === 0) {
+      return res.status(404).json({ error: 'No invoices found' });
+    }
+    
+    // Delete invoice items first (foreign key constraint)
+    db.run(`DELETE FROM invoice_items WHERE invoice_id IN (${placeholders})`, invoice_ids, function(err) {
+      if (err) {
+        console.error('Error deleting invoice items:', err);
+        return res.status(500).json({ error: 'Failed to delete invoice items' });
+      }
+      
+      // Delete payments
+      db.run(`DELETE FROM payments WHERE invoice_id IN (${placeholders})`, invoice_ids, function(err) {
+        if (err) {
+          console.error('Error deleting payments:', err);
+          return res.status(500).json({ error: 'Failed to delete payments' });
+        }
+        
+        // Finally, delete the invoices
+        db.run(`DELETE FROM invoices WHERE id IN (${placeholders})`, invoice_ids, function(err) {
+          if (err) {
+            console.error('Error deleting invoices:', err);
+            return res.status(500).json({ error: 'Failed to delete invoices' });
+          }
+          
+          res.json({ 
+            success: true, 
+            message: `${this.changes} invoices deleted successfully`,
+            deleted_invoices: invoices.map(inv => inv.invoice_number)
+          });
+        });
+      });
+    });
+  });
+});
+
 // Delete invoice
 app.delete('/api/invoices/:id', (req, res) => {
   const invoiceId = req.params.id;
@@ -1100,58 +1171,166 @@ app.patch('/api/invoices/bulk/status', (req, res) => {
   });
 });
 
-// Bulk delete invoices
-app.delete('/api/invoices/bulk', (req, res) => {
-  const { invoice_ids } = req.body;
-  
-  if (!Array.isArray(invoice_ids) || invoice_ids.length === 0) {
-    return res.status(400).json({ error: 'Invoice IDs array is required' });
-  }
-  
-  // First, get the invoices to show what we're deleting
-  const placeholders = invoice_ids.map(() => '?').join(',');
-  const selectQuery = `SELECT invoice_number FROM invoices WHERE id IN (${placeholders})`;
-  
-  db.all(selectQuery, invoice_ids, (err, invoices) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Database error' });
+// Create custom invoice from selected invoices
+app.post('/api/invoices/custom-from-selected', async (req, res) => {
+  try {
+    const { 
+      invoice_ids, 
+      custom_invoice_number, 
+      client_name,
+      invoice_date_from,
+      invoice_date_to,
+      custom_notes
+    } = req.body;
+
+    if (!Array.isArray(invoice_ids) || invoice_ids.length === 0) {
+      return res.status(400).json({ error: 'Invoice IDs array is required' });
     }
-    
-    if (invoices.length === 0) {
-      return res.status(404).json({ error: 'No invoices found' });
+
+    if (!custom_invoice_number) {
+      return res.status(400).json({ error: 'Custom invoice number is required' });
     }
-    
-    // Delete invoice items first (foreign key constraint)
-    db.run(`DELETE FROM invoice_items WHERE invoice_id IN (${placeholders})`, invoice_ids, function(err) {
+
+    // Get all invoice items from selected invoices
+    const placeholders = invoice_ids.map(() => '?').join(',');
+    const query = `
+      SELECT ii.*, i.business, i.client_id 
+      FROM invoice_items ii
+      JOIN invoices i ON ii.invoice_id = i.id
+      WHERE i.id IN (${placeholders})
+    `;
+
+    db.all(query, invoice_ids, async (err, items) => {
       if (err) {
-        console.error('Error deleting invoice items:', err);
-        return res.status(500).json({ error: 'Failed to delete invoice items' });
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
       }
-      
-      // Delete payments
-      db.run(`DELETE FROM payments WHERE invoice_id IN (${placeholders})`, invoice_ids, function(err) {
-        if (err) {
-          console.error('Error deleting payments:', err);
-          return res.status(500).json({ error: 'Failed to delete payments' });
-        }
-        
-        // Finally, delete the invoices
-        db.run(`DELETE FROM invoices WHERE id IN (${placeholders})`, invoice_ids, function(err) {
-          if (err) {
-            console.error('Error deleting invoices:', err);
-            return res.status(500).json({ error: 'Failed to delete invoices' });
-          }
-          
-          res.json({ 
-            success: true, 
-            message: `${this.changes} invoices deleted successfully`,
-            deleted_invoices: invoices.map(inv => inv.invoice_number)
-          });
-        });
+
+      if (items.length === 0) {
+        return res.status(400).json({ error: 'No invoice items found for selected invoices' });
+      }
+
+      // Group items by business to determine the business for the custom invoice
+      const businessCounts = {};
+      items.forEach(item => {
+        businessCounts[item.business] = (businessCounts[item.business] || 0) + 1;
       });
+
+      // Use the business with the most items
+      const primaryBusiness = Object.keys(businessCounts).reduce((a, b) => 
+        businessCounts[a] > businessCounts[b] ? a : b
+      );
+
+      // Calculate totals
+      const subtotal = items.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0);
+      const grandTotal = subtotal * 1.10; // Add 10% billing fee
+
+      const customInvoiceId = uuidv4();
+      const mergedInvoiceNumber = custom_invoice_number.endsWith('-MERGED') 
+        ? custom_invoice_number 
+        : `${custom_invoice_number}-MERGED`;
+
+      // Determine client ID
+      let clientId = null;
+      if (client_name) {
+        // Try to find existing client
+        db.get('SELECT id FROM clients WHERE name = ?', [client_name], (err, client) => {
+          if (err) {
+            console.error('Error finding client:', err);
+          } else if (client) {
+            clientId = client.id;
+          }
+          createCustomInvoice();
+        });
+      } else {
+        createCustomInvoice();
+      }
+
+      function createCustomInvoice() {
+        // Create the custom invoice
+        db.run(
+          `INSERT INTO invoices (id, invoice_number, invoice_date, business, client_id, subtotal, grand_total, status) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            customInvoiceId, 
+            mergedInvoiceNumber, 
+            moment.tz('America/Chicago').format('YYYY-MM-DD'), 
+            primaryBusiness, 
+            clientId, 
+            subtotal, 
+            grandTotal, 
+            'pending'
+          ],
+          function(err) {
+            if (err) {
+              console.error('Error creating custom invoice:', err);
+              return res.status(500).json({ error: 'Failed to create custom invoice' });
+            }
+
+            // Insert invoice items
+            const itemPromises = [];
+            for (const item of items) {
+              const itemId = uuidv4();
+              const itemPromise = new Promise((resolve, reject) => {
+                db.run(
+                  `INSERT INTO invoice_items (id, invoice_id, company, job_key, reference_number, job_title, location, quantity, unit, average_cost, total, original_invoice_date) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [
+                    itemId, 
+                    customInvoiceId, 
+                    item.company, 
+                    item.job_key, 
+                    item.reference_number, 
+                    item.job_title, 
+                    item.location, 
+                    item.quantity, 
+                    item.unit, 
+                    item.average_cost, 
+                    item.total, 
+                    item.original_invoice_date || item.created_at
+                  ],
+                  function(err) {
+                    if (err) {
+                      console.error('Error inserting custom invoice item:', err);
+                      reject(err);
+                    } else {
+                      resolve();
+                    }
+                  }
+                );
+              });
+              itemPromises.push(itemPromise);
+            }
+
+            Promise.all(itemPromises)
+              .then(() => {
+                res.json({
+                  success: true,
+                  message: 'Custom invoice created successfully',
+                  invoice_id: customInvoiceId,
+                  invoice_number: mergedInvoiceNumber,
+                  summary: {
+                    total_items: items.length,
+                    subtotal: subtotal,
+                    grand_total: grandTotal,
+                    business: primaryBusiness,
+                    client_name: client_name || 'Not specified'
+                  }
+                });
+              })
+              .catch(err => {
+                console.error('Error inserting invoice items:', err);
+                res.status(500).json({ error: 'Failed to create invoice items' });
+              });
+          }
+        );
+      }
     });
-  });
+
+  } catch (error) {
+    console.error('Custom invoice error:', error);
+    res.status(500).json({ error: 'Failed to create custom invoice', details: error.message });
+  }
 });
 
 // Add payment
@@ -1217,7 +1396,7 @@ app.post('/api/invoices/:id/payments', (req, res) => {
 // Send invoice via email
 app.post('/api/invoices/:id/send', async (req, res) => {
   const invoiceId = req.params.id;
-  const { client_email, client_name, message, notes } = req.body;
+  const { client_email, client_name, message, notes, invoice_date_from, invoice_date_to, custom_notes } = req.body;
   
   if (!client_email) {
     return res.status(400).json({ error: 'Client email is required' });
@@ -1251,10 +1430,20 @@ app.post('/api/invoices/:id/send', async (req, res) => {
         };
 
         const formatDate = (dateString) => {
-          return moment.tz(dateString, 'America/Chicago').format('MM/DD/YYYY');
+          if (!dateString) return '-';
+          const momentDate = moment.tz(dateString, 'America/Chicago');
+          if (!momentDate.isValid()) {
+            return '-';
+          }
+          return momentDate.format('MM/DD/YYYY');
         };
 
         const getDateRange = () => {
+          // Use custom dates if provided
+          if (invoice_date_from && invoice_date_to) {
+            return `${formatDate(invoice_date_from)} to ${formatDate(invoice_date_to)}`;
+          }
+          
           if (!items || items.length === 0) return formatDate(invoice.invoice_date);
           
           const dates = items.map(item => new Date(item.created_at || invoice.created_at));
@@ -1409,7 +1598,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
                       <td>${item.reference_number}</td>
                       <td>${item.job_title}</td>
                       <td>${item.location}</td>
-                      <td>${formatDate(invoice.invoice_date)}</td>
+                      <td>${formatDate(item.original_invoice_date || item.created_at || invoice.invoice_date)}</td>
                       <td style="text-align:right;">${item.quantity}</td>
                       <td>${item.unit}</td>
                       <td style="text-align:right;">${formatCurrency(item.average_cost)}</td>
@@ -1434,7 +1623,7 @@ app.post('/api/invoices/:id/send', async (req, res) => {
               </table>
               <div class="notes">
                 <h3>Notes:</h3><br>
-                <p>Combined billing from ${getDateRange()}</p>
+                ${custom_notes ? `<p>${custom_notes.replace(/\n/g, '<br>')}</p>` : `<p>Combined billing from ${getDateRange()}</p>`}
                 ${notes ? `<p><strong>Additional Notes:</strong><br>${notes.replace(/\n/g, '<br>')}</p>` : ''}
               </div>
               <footer>

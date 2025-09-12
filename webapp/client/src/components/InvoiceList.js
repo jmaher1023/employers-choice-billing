@@ -10,7 +10,7 @@ import {
   AlertCircle,
   FileText,
   Trash2,
-  Edit3
+  Plus
 } from 'lucide-react';
 
 const InvoiceList = () => {
@@ -31,6 +31,14 @@ const InvoiceList = () => {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customInvoiceData, setCustomInvoiceData] = useState({
+    custom_invoice_number: '',
+    client_name: '',
+    invoice_date_from: '',
+    invoice_date_to: '',
+    custom_notes: ''
+  });
 
   useEffect(() => {
     fetchInvoices();
@@ -177,6 +185,52 @@ const InvoiceList = () => {
     }
   };
 
+  const handleCreateCustomInvoice = async () => {
+    if (!customInvoiceData.custom_invoice_number) {
+      toast.error('Please enter a custom invoice number');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/invoices/custom-from-selected', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          invoice_ids: Array.from(selectedInvoices),
+          custom_invoice_number: customInvoiceData.custom_invoice_number,
+          client_name: customInvoiceData.client_name,
+          invoice_date_from: customInvoiceData.invoice_date_from,
+          invoice_date_to: customInvoiceData.invoice_date_to,
+          custom_notes: customInvoiceData.custom_notes
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.success(result.message);
+        setSelectedInvoices(new Set());
+        setShowBulkActions(false);
+        setShowCustomModal(false);
+        setCustomInvoiceData({
+          custom_invoice_number: '',
+          client_name: '',
+          invoice_date_from: '',
+          invoice_date_to: '',
+          custom_notes: ''
+        });
+        fetchInvoices(); // Refresh the list
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to create custom invoice');
+      }
+    } catch (error) {
+      console.error('Error creating custom invoice:', error);
+      toast.error('Failed to create custom invoice');
+    }
+  };
+
   const getStatusIcon = (status) => {
     switch (status) {
       case 'paid':
@@ -215,8 +269,13 @@ const InvoiceList = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return '-';
     // Ensure consistent date formatting in Central Time
     const date = new Date(dateString + 'T00:00:00');
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return '-';
+    }
     return date.toLocaleDateString('en-US', {
       timeZone: 'America/Chicago',
       year: 'numeric',
@@ -260,6 +319,13 @@ const InvoiceList = () => {
                   <option value="paid">Paid</option>
                   <option value="overdue">Overdue</option>
                 </select>
+                <button
+                  onClick={() => setShowCustomModal(true)}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create Custom
+                </button>
                 <button
                   onClick={() => setShowDeleteModal(true)}
                   className="px-3 py-1 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center"
@@ -527,6 +593,103 @@ const InvoiceList = () => {
                 }`}
               >
                 Delete Invoices
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Custom Invoice Modal */}
+      {showCustomModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Create Custom Invoice</h3>
+            <div className="mb-4">
+              <p className="text-gray-600 mb-4">
+                Create a custom invoice from <strong>{selectedInvoices.size} selected invoice{selectedInvoices.size !== 1 ? 's' : ''}</strong>.
+              </p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Custom Invoice Number *
+                </label>
+                <input
+                  type="text"
+                  value={customInvoiceData.custom_invoice_number}
+                  onChange={(e) => setCustomInvoiceData(prev => ({ ...prev, custom_invoice_number: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  placeholder="e.g., CUSTOM-001"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Client Name (optional)
+                </label>
+                <input
+                  type="text"
+                  value={customInvoiceData.client_name}
+                  onChange={(e) => setCustomInvoiceData(prev => ({ ...prev, client_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  placeholder="Client Name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Invoice Date From (optional)
+                </label>
+                <input
+                  type="date"
+                  value={customInvoiceData.invoice_date_from}
+                  onChange={(e) => setCustomInvoiceData(prev => ({ ...prev, invoice_date_from: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Invoice Date To (optional)
+                </label>
+                <input
+                  type="date"
+                  value={customInvoiceData.invoice_date_to}
+                  onChange={(e) => setCustomInvoiceData(prev => ({ ...prev, invoice_date_to: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Custom Notes (optional)
+                </label>
+                <textarea
+                  value={customInvoiceData.custom_notes}
+                  onChange={(e) => setCustomInvoiceData(prev => ({ ...prev, custom_notes: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  rows="3"
+                  placeholder="Custom notes for the invoice..."
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCustomModal(false);
+                  setCustomInvoiceData({
+                    custom_invoice_number: '',
+                    client_name: '',
+                    invoice_date_from: '',
+                    invoice_date_to: '',
+                    custom_notes: ''
+                  });
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateCustomInvoice}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create Custom Invoice
               </button>
             </div>
           </div>
