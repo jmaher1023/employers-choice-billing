@@ -125,7 +125,8 @@ A comprehensive web application for managing invoices, processing CSV files, and
 - `id` - Unique identifier
 - `invoice_number` - Invoice number from CSV
 - `invoice_date` - Invoice date
-- `location_group` - Location group (everett, whittingham, mclain, others)
+- `business` - Business identifier (UUID)
+- `client_id` - Client identifier (UUID)
 - `subtotal` - Invoice subtotal
 - `grand_total` - Invoice total with 10% markup
 - `status` - Invoice status (pending, sent, paid, overdue)
@@ -156,7 +157,12 @@ A comprehensive web application for managing invoices, processing CSV files, and
 - `id` - Unique identifier
 - `name` - Client name
 - `email` - Client email
-- `location_group` - Associated location group
+- `business` - Business identifier (UUID)
+- `locations` - Client locations
+- `phone` - Client phone number
+- `address` - Client address
+- `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp
 
 ## Email Configuration
 

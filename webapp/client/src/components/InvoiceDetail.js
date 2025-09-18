@@ -6,7 +6,6 @@ import {
   Mail, 
   DollarSign, 
   Calendar, 
-  MapPin, 
   FileText,
   Plus,
   CheckCircle,
@@ -39,10 +38,19 @@ const InvoiceDetail = () => {
   const [editingHeader, setEditingHeader] = useState(false);
   const [editingHeaderData, setEditingHeaderData] = useState({});
   const [clients, setClients] = useState([]);
+  const [businesses, setBusinesses] = useState([]);
+  const [linkedInvoices, setLinkedInvoices] = useState([]);
+  const [parentInvoices, setParentInvoices] = useState([]);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [availableInvoices, setAvailableInvoices] = useState([]);
+  const [selectedInvoices, setSelectedInvoices] = useState(new Set());
 
   useEffect(() => {
     fetchInvoiceDetails();
     fetchClients();
+    fetchBusinesses();
+    fetchLinkedInvoices();
+    fetchParentInvoices();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchInvoiceDetails = async () => {
@@ -69,6 +77,51 @@ const InvoiceDetail = () => {
       setClients(data.clients || []);
     } catch (error) {
       console.error('Error fetching clients:', error);
+    }
+  };
+
+  const fetchBusinesses = async () => {
+    try {
+      const response = await fetch('/api/businesses');
+      const data = await response.json();
+      setBusinesses(data.businesses || []);
+    } catch (error) {
+      console.error('Error fetching businesses:', error);
+    }
+  };
+
+  const fetchLinkedInvoices = async () => {
+    try {
+      const response = await fetch(`/api/invoices/${id}/links`);
+      const data = await response.json();
+      setLinkedInvoices(data.linked_invoices || []);
+    } catch (error) {
+      console.error('Error fetching linked invoices:', error);
+    }
+  };
+
+  const fetchParentInvoices = async () => {
+    try {
+      const response = await fetch(`/api/invoices/${id}/parents`);
+      const data = await response.json();
+      setParentInvoices(data.parent_invoices || []);
+    } catch (error) {
+      console.error('Error fetching parent invoices:', error);
+    }
+  };
+
+  const fetchAvailableInvoices = async () => {
+    try {
+      const response = await fetch('/api/invoices?limit=100');
+      const data = await response.json();
+      // Filter out current invoice and already linked invoices
+      const currentLinkedIds = linkedInvoices.map(li => li.id);
+      const available = data.invoices.filter(inv => 
+        inv.id !== id && !currentLinkedIds.includes(inv.id)
+      );
+      setAvailableInvoices(available);
+    } catch (error) {
+      console.error('Error fetching available invoices:', error);
     }
   };
 
@@ -264,7 +317,9 @@ const InvoiceDetail = () => {
     setEditingHeader(true);
     setEditingHeaderData({
       invoice_number: invoice?.invoice_number || '',
-      invoice_date: formatDateForInput(invoice?.invoice_date)
+      invoice_date: formatDateForInput(invoice?.invoice_date),
+      client_id: invoice?.client_id || '',
+      business: invoice?.business || ''
     });
   };
 
@@ -295,6 +350,53 @@ const InvoiceDetail = () => {
     } catch (error) {
       console.error('Error updating invoice:', error);
       toast.error('Failed to update invoice');
+    }
+  };
+
+  const handleLinkInvoices = async (childInvoiceIds) => {
+    try {
+      const response = await fetch(`/api/invoices/${id}/link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ child_invoice_ids: childInvoiceIds })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        toast.success(data.message);
+        fetchLinkedInvoices();
+        setShowLinkModal(false);
+      } else {
+        toast.error(data.error || 'Failed to link invoices');
+      }
+    } catch (error) {
+      console.error('Error linking invoices:', error);
+      toast.error('Failed to link invoices');
+    }
+  };
+
+  const handleUnlinkInvoices = async (childInvoiceIds) => {
+    try {
+      const response = await fetch(`/api/invoices/${id}/unlink`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ child_invoice_ids: childInvoiceIds })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        toast.success(data.message);
+        fetchLinkedInvoices();
+      } else {
+        toast.error(data.error || 'Failed to unlink invoices');
+      }
+    } catch (error) {
+      console.error('Error unlinking invoices:', error);
+      toast.error('Failed to unlink invoices');
     }
   };
 
@@ -401,6 +503,42 @@ const InvoiceDetail = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Business
+                  </label>
+                  <select
+                    value={editingHeaderData.business}
+                    onChange={(e) => setEditingHeaderData(prev => ({ ...prev, business: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    <option value="">Select Business</option>
+                    {businesses.map((business) => (
+                      <option key={business.id} value={business.id}>
+                        {business.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Client
+                  </label>
+                  <select
+                    value={editingHeaderData.client_id}
+                    onChange={(e) => setEditingHeaderData(prev => ({ ...prev, client_id: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    <option value="">Select Client</option>
+                    {clients
+                      .filter(client => !editingHeaderData.business || client.business === editingHeaderData.business)
+                      .map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
                 <div className="flex space-x-2">
                   <button
                     onClick={saveHeaderEdit}
@@ -434,11 +572,20 @@ const InvoiceDetail = () => {
           </div>
           <div>
             <div className="flex items-center text-gray-600 mb-2">
-              <MapPin className="h-4 w-4 mr-2" />
-              Location Group
+              <FileText className="h-4 w-4 mr-2" />
+              Business
             </div>
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
-              {invoice.location_group}
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+              {invoice.business_name || invoice.business || 'Not assigned'}
+            </span>
+          </div>
+          <div>
+            <div className="flex items-center text-gray-600 mb-2">
+              <FileText className="h-4 w-4 mr-2" />
+              Client
+            </div>
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+              {invoice.client_name || 'Not assigned'}
             </span>
           </div>
           <div>
@@ -489,6 +636,81 @@ const InvoiceDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Invoice Linking */}
+      {(linkedInvoices.length > 0 || parentInvoices.length > 0) && (
+        <div className="card-brand">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Invoice Links</h3>
+              <button
+                onClick={() => {
+                  fetchAvailableInvoices();
+                  setShowLinkModal(true);
+                }}
+                className="btn-brand-secondary text-sm"
+              >
+                Link Invoices
+              </button>
+            </div>
+          </div>
+          <div className="p-6">
+            {parentInvoices.length > 0 && (
+              <div className="mb-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Parent Invoices</h4>
+                <div className="space-y-2">
+                  {parentInvoices.map((parent) => (
+                    <div key={parent.id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                      <div>
+                        <Link to={`/invoices/${parent.id}`} className="font-medium text-blue-900 hover:text-blue-700">
+                          {parent.invoice_number}
+                        </Link>
+                        <p className="text-sm text-blue-700">
+                          {parent.client_name} • {formatCurrency(parent.grand_total)} • {parent.status}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(parent.status)}`}>
+                        {parent.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {linkedInvoices.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Linked Child Invoices</h4>
+                <div className="space-y-2">
+                  {linkedInvoices.map((child) => (
+                    <div key={child.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                      <div>
+                        <Link to={`/invoices/${child.id}`} className="font-medium text-green-900 hover:text-green-700">
+                          {child.invoice_number}
+                        </Link>
+                        <p className="text-sm text-green-700">
+                          {child.client_name} • {formatCurrency(child.grand_total)} • {child.status}
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(child.status)}`}>
+                          {child.status}
+                        </span>
+                        <button
+                          onClick={() => handleUnlinkInvoices([child.id])}
+                          className="text-red-600 hover:text-red-700 text-sm"
+                        >
+                          Unlink
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Invoice Items */}
       <div className="card-brand">
@@ -894,6 +1116,68 @@ const InvoiceDetail = () => {
                 }`}
               >
                 Delete Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Link Invoices Modal */}
+      {showLinkModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Link Invoices</h3>
+            <p className="text-gray-600 mb-4">
+              Select invoices to link as children of <strong>{invoice?.invoice_number}</strong>. 
+              When this invoice is marked as paid, all linked invoices will automatically be marked as paid.
+            </p>
+            
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {availableInvoices.map((inv) => (
+                <div key={inv.id} className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    id={`invoice-${inv.id}`}
+                    className="mr-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedInvoices(prev => new Set([...prev, inv.id]));
+                      } else {
+                        setSelectedInvoices(prev => {
+                          const newSet = new Set(prev);
+                          newSet.delete(inv.id);
+                          return newSet;
+                        });
+                      }
+                    }}
+                  />
+                  <label htmlFor={`invoice-${inv.id}`} className="flex-1 cursor-pointer">
+                    <div className="font-medium text-gray-900">{inv.invoice_number}</div>
+                    <div className="text-sm text-gray-600">
+                      {inv.client_name} • {formatCurrency(inv.grand_total)} • {inv.status}
+                    </div>
+                  </label>
+                </div>
+              ))}
+            </div>
+            
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowLinkModal(false)}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleLinkInvoices(Array.from(selectedInvoices))}
+                disabled={selectedInvoices.size === 0}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  selectedInvoices.size > 0
+                    ? 'bg-primary-600 hover:bg-primary-700 text-white'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Link {selectedInvoices.size} Invoice{selectedInvoices.size !== 1 ? 's' : ''}
               </button>
             </div>
           </div>
