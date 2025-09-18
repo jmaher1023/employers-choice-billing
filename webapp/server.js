@@ -140,6 +140,20 @@ db.serialize(() => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  // Ads table
+  db.run(`CREATE TABLE IF NOT EXISTS ads (
+    id TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    ad_title TEXT NOT NULL,
+    city TEXT,
+    state TEXT,
+    job_key TEXT,
+    reference_number TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES clients (id) ON DELETE CASCADE
+  )`);
+
   // Payments table
   db.run(`CREATE TABLE IF NOT EXISTS payments (
     id TEXT PRIMARY KEY,
@@ -150,6 +164,17 @@ db.serialize(() => {
     FOREIGN KEY (invoice_id) REFERENCES invoices (id)
   )`);
 
+  // Invoice links table (for parent-child relationships)
+  db.run(`CREATE TABLE IF NOT EXISTS invoice_links (
+    id TEXT PRIMARY KEY,
+    parent_invoice_id TEXT NOT NULL,
+    child_invoice_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (parent_invoice_id) REFERENCES invoices (id) ON DELETE CASCADE,
+    FOREIGN KEY (child_invoice_id) REFERENCES invoices (id) ON DELETE CASCADE,
+    UNIQUE(parent_invoice_id, child_invoice_id)
+  )`);
+
   // Add original_invoice_date column to existing invoice_items table if it doesn't exist
   db.run(`ALTER TABLE invoice_items ADD COLUMN original_invoice_date TEXT`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {
@@ -157,22 +182,6 @@ db.serialize(() => {
     }
   });
 
-  // Fix any invalid dates in the database
-  db.run(`UPDATE invoices SET invoice_date = date('now') WHERE invoice_date IS NULL OR invoice_date = '' OR invoice_date = 'Invalid Date'`, (err) => {
-    if (err) {
-      console.error('Error fixing invalid dates:', err);
-    } else {
-      console.log('Fixed any invalid dates in invoices table');
-    }
-  });
-
-  db.run(`UPDATE invoice_items SET original_invoice_date = date('now') WHERE original_invoice_date IS NULL OR original_invoice_date = '' OR original_invoice_date = 'Invalid Date'`, (err) => {
-    if (err) {
-      console.error('Error fixing invalid dates in invoice_items:', err);
-    } else {
-      console.log('Fixed any invalid dates in invoice_items table');
-    }
-  });
 });
 
 // Email webhook configuration
@@ -399,6 +408,106 @@ app.delete('/api/clients/:id', (req, res) => {
         success: true, 
         message: 'Client deleted successfully' 
       });
+    });
+  });
+});
+
+// Ads management endpoints
+app.get('/api/ads', (req, res) => {
+  const { client_id } = req.query;
+  
+  let query = 'SELECT * FROM ads';
+  const params = [];
+  
+  if (client_id) {
+    query += ' WHERE client_id = ?';
+    params.push(client_id);
+  }
+  
+  query += ' ORDER BY ad_title';
+  
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    res.json({ ads: rows });
+  });
+});
+
+app.post('/api/ads', (req, res) => {
+  const { client_id, ad_title, city, state, job_key, reference_number } = req.body;
+  
+  if (!client_id || !ad_title) {
+    return res.status(400).json({ error: 'Client ID and ad title are required' });
+  }
+  
+  const adId = uuidv4();
+  
+  db.run(
+    'INSERT INTO ads (id, client_id, ad_title, city, state, job_key, reference_number) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [adId, client_id, ad_title, city || '', state || '', job_key || '', reference_number || ''],
+    function(err) {
+      if (err) {
+        console.error('Error creating ad:', err);
+        return res.status(500).json({ error: 'Failed to create ad' });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Ad created successfully',
+        ad_id: adId 
+      });
+    }
+  );
+});
+
+app.put('/api/ads/:id', (req, res) => {
+  const adId = req.params.id;
+  const { ad_title, city, state, job_key, reference_number } = req.body;
+  
+  if (!ad_title) {
+    return res.status(400).json({ error: 'Ad title is required' });
+  }
+  
+  db.run(
+    'UPDATE ads SET ad_title = ?, city = ?, state = ?, job_key = ?, reference_number = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [ad_title, city || '', state || '', job_key || '', reference_number || '', adId],
+    function(err) {
+      if (err) {
+        console.error('Error updating ad:', err);
+        return res.status(500).json({ error: 'Failed to update ad' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Ad not found' });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: 'Ad updated successfully' 
+      });
+    }
+  );
+});
+
+app.delete('/api/ads/:id', (req, res) => {
+  const adId = req.params.id;
+  
+  db.run('DELETE FROM ads WHERE id = ?', [adId], function(err) {
+    if (err) {
+      console.error('Error deleting ad:', err);
+      return res.status(500).json({ error: 'Failed to delete ad' });
+    }
+    
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Ad not found' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Ad deleted successfully' 
     });
   });
 });
@@ -981,8 +1090,16 @@ app.get('/api/invoices', (req, res) => {
 app.get('/api/invoices/:id', (req, res) => {
   const invoiceId = req.params.id;
   
-  // Get invoice details
-  db.get('SELECT * FROM invoices WHERE id = ?', [invoiceId], (err, invoice) => {
+  // Get invoice details with client and business information
+  db.get(`
+    SELECT i.*, 
+           c.name as client_name,
+           b.name as business_name
+    FROM invoices i
+    LEFT JOIN clients c ON i.client_id = c.id
+    LEFT JOIN businesses b ON i.business = b.id
+    WHERE i.id = ?
+  `, [invoiceId], (err, invoice) => {
     if (err) {
       console.error('Database error:', err);
       return res.status(500).json({ error: 'Database error' });
@@ -1377,6 +1494,32 @@ app.post('/api/invoices/:id/payments', (req, res) => {
                 db.run(
                   'UPDATE invoices SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
                   ['paid', invoiceId]
+                );
+
+                // Mark all linked child invoices as paid
+                db.all(
+                  'SELECT child_invoice_id FROM invoice_links WHERE parent_invoice_id = ?',
+                  [invoiceId],
+                  (err, linkedInvoices) => {
+                    if (err) {
+                      console.error('Error getting linked invoices:', err);
+                    } else if (linkedInvoices.length > 0) {
+                      const childIds = linkedInvoices.map(link => link.child_invoice_id);
+                      const placeholders = childIds.map(() => '?').join(',');
+                      
+                      db.run(
+                        `UPDATE invoices SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
+                        ['paid', ...childIds],
+                        function(err) {
+                          if (err) {
+                            console.error('Error updating linked invoices:', err);
+                          } else {
+                            console.log(`Marked ${this.changes} linked invoices as paid`);
+                          }
+                        }
+                      );
+                    }
+                  }
                 );
               }
               
@@ -1777,18 +1920,18 @@ app.put('/api/invoice-items/:id', (req, res) => {
   );
 });
 
-// Update invoice details (name, date, etc.)
+// Update invoice details (name, date, client, business, etc.)
 app.put('/api/invoices/:id', (req, res) => {
   const invoiceId = req.params.id;
-  const { invoice_number, invoice_date } = req.body;
+  const { invoice_number, invoice_date, client_id, business } = req.body;
 
   if (!invoice_number) {
     return res.status(400).json({ error: 'Invoice number is required' });
   }
 
   db.run(
-    'UPDATE invoices SET invoice_number = ?, invoice_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-    [invoice_number, invoice_date, invoiceId],
+    'UPDATE invoices SET invoice_number = ?, invoice_date = ?, client_id = ?, business = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [invoice_number, invoice_date, client_id || null, business || null, invoiceId],
     function(err) {
       if (err) {
         console.error('Error updating invoice:', err);
@@ -1838,6 +1981,160 @@ app.put('/api/invoices/:id/totals', (req, res) => {
         });
       }
     );
+  });
+});
+
+// Invoice Linking API Endpoints
+
+// Link invoices (create parent-child relationship)
+app.post('/api/invoices/:parentId/link', (req, res) => {
+  const parentId = req.params.parentId;
+  const { child_invoice_ids } = req.body;
+
+  if (!child_invoice_ids || !Array.isArray(child_invoice_ids) || child_invoice_ids.length === 0) {
+    return res.status(400).json({ error: 'Child invoice IDs are required' });
+  }
+
+  // Check if parent invoice exists
+  db.get('SELECT id FROM invoices WHERE id = ?', [parentId], (err, parent) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    if (!parent) {
+      return res.status(404).json({ error: 'Parent invoice not found' });
+    }
+
+    // Check if all child invoices exist
+    const placeholders = child_invoice_ids.map(() => '?').join(',');
+    db.all(`SELECT id FROM invoices WHERE id IN (${placeholders})`, child_invoice_ids, (err, children) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (children.length !== child_invoice_ids.length) {
+        return res.status(400).json({ error: 'One or more child invoices not found' });
+      }
+
+      // Create links
+      const linkPromises = child_invoice_ids.map(childId => {
+        return new Promise((resolve, reject) => {
+          const linkId = uuidv4();
+          db.run(
+            'INSERT INTO invoice_links (id, parent_invoice_id, child_invoice_id) VALUES (?, ?, ?)',
+            [linkId, parentId, childId],
+            function(err) {
+              if (err) {
+                if (err.message.includes('UNIQUE constraint failed')) {
+                  resolve({ skipped: true, childId });
+                } else {
+                  reject(err);
+                }
+              } else {
+                resolve({ created: true, childId });
+              }
+            }
+          );
+        });
+      });
+
+      Promise.all(linkPromises)
+        .then(results => {
+          const created = results.filter(r => r.created).length;
+          const skipped = results.filter(r => r.skipped).length;
+          
+          res.json({
+            success: true,
+            message: `Linked ${created} invoices${skipped > 0 ? `, ${skipped} already linked` : ''}`,
+            created_count: created,
+            skipped_count: skipped
+          });
+        })
+        .catch(err => {
+          console.error('Error creating links:', err);
+          res.status(500).json({ error: 'Failed to create invoice links' });
+        });
+    });
+  });
+});
+
+// Unlink invoices
+app.delete('/api/invoices/:parentId/unlink', (req, res) => {
+  const parentId = req.params.parentId;
+  const { child_invoice_ids } = req.body;
+
+  if (!child_invoice_ids || !Array.isArray(child_invoice_ids) || child_invoice_ids.length === 0) {
+    return res.status(400).json({ error: 'Child invoice IDs are required' });
+  }
+
+  const placeholders = child_invoice_ids.map(() => '?').join(',');
+  db.run(
+    `DELETE FROM invoice_links WHERE parent_invoice_id = ? AND child_invoice_id IN (${placeholders})`,
+    [parentId, ...child_invoice_ids],
+    function(err) {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      res.json({
+        success: true,
+        message: `Unlinked ${this.changes} invoices`,
+        unlinked_count: this.changes
+      });
+    }
+  );
+});
+
+// Get linked invoices (children of a parent invoice)
+app.get('/api/invoices/:parentId/links', (req, res) => {
+  const parentId = req.params.parentId;
+
+  db.all(`
+    SELECT i.*, c.name as client_name, b.name as business_name
+    FROM invoice_links il
+    JOIN invoices i ON il.child_invoice_id = i.id
+    LEFT JOIN clients c ON i.client_id = c.id
+    LEFT JOIN businesses b ON i.business = b.id
+    WHERE il.parent_invoice_id = ?
+    ORDER BY i.invoice_date DESC
+  `, [parentId], (err, linkedInvoices) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    res.json({
+      success: true,
+      linked_invoices: linkedInvoices
+    });
+  });
+});
+
+// Get parent invoices (invoices that have this invoice as a child)
+app.get('/api/invoices/:childId/parents', (req, res) => {
+  const childId = req.params.childId;
+
+  db.all(`
+    SELECT i.*, c.name as client_name, b.name as business_name
+    FROM invoice_links il
+    JOIN invoices i ON il.parent_invoice_id = i.id
+    LEFT JOIN clients c ON i.client_id = c.id
+    LEFT JOIN businesses b ON i.business = b.id
+    WHERE il.child_invoice_id = ?
+    ORDER BY i.invoice_date DESC
+  `, [childId], (err, parentInvoices) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    res.json({
+      success: true,
+      parent_invoices: parentInvoices
+    });
   });
 });
 

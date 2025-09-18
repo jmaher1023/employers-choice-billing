@@ -32,6 +32,7 @@ class InvoiceProcessor {
     this.clientData = {};
     this.businessAssignments = {};
     this.clients = {}; // Will store client data from database
+    this.ads = {}; // Will store ads data from database
   }
 
   // Normalize data structure (same logic as your original code)
@@ -93,8 +94,46 @@ class InvoiceProcessor {
     });
   }
 
-  // Extract client information based on business assignment and location
-  extractClientInfo(business, location) {
+  // Load ads from database
+  async loadAds() {
+    return new Promise((resolve, reject) => {
+      this.db.all('SELECT a.*, c.business FROM ads a JOIN clients c ON a.client_id = c.id', (err, rows) => {
+        if (err) {
+          console.error('Error loading ads from database:', err);
+          reject(err);
+          return;
+        }
+        
+        // Organize ads by business and client
+        this.ads = {};
+        rows.forEach(ad => {
+          if (!this.ads[ad.business]) {
+            this.ads[ad.business] = {};
+          }
+          if (!this.ads[ad.business][ad.client_id]) {
+            this.ads[ad.business][ad.client_id] = [];
+          }
+          this.ads[ad.business][ad.client_id].push(ad);
+        });
+        
+        console.log('Loaded ads from database:');
+        Object.entries(this.ads).forEach(([business, clientAds]) => {
+          console.log(`  ${business}:`);
+          Object.entries(clientAds).forEach(([clientId, ads]) => {
+            console.log(`    Client ${clientId}: ${ads.length} ads`);
+            ads.forEach(ad => {
+              console.log(`      - ${ad.ad_title} (${ad.city}, ${ad.state}) - Job: ${ad.job_key}, Ref: ${ad.reference_number}`);
+            });
+          });
+        });
+        
+        resolve(this.ads);
+      });
+    });
+  }
+
+  // Extract client information based on business assignment, location, job_key, and reference_number
+  extractClientInfo(business, location, jobKey = '', referenceNumber = '') {
     // Try to find clients for this business (check both business ID and business name)
     let businessClients = [];
     
@@ -115,11 +154,52 @@ class InvoiceProcessor {
     if (businessClients.length > 0) {
       const city = location ? location.split(',')[0].trim() : '';
       console.log(`DEBUG: Looking for city "${city}" in business "${business}"`);
+      console.log(`DEBUG: Job Key: "${jobKey}", Reference: "${referenceNumber}"`);
       console.log(`DEBUG: Available clients:`, businessClients.map(c => `${c.name} (${c.locations})`));
       process.stdout.write(`DEBUG: Looking for city "${city}" in business "${business}"\n`);
+      process.stdout.write(`DEBUG: Job Key: "${jobKey}", Reference: "${referenceNumber}"\n`);
       process.stdout.write(`DEBUG: Available clients: ${businessClients.map(c => `${c.name} (${c.locations})`).join(', ')}\n`);
       
-      // Find client whose locations include this city (exact match)
+      // First, try to match by ads data (job_key and reference_number)
+      if (jobKey || referenceNumber) {
+        for (const client of businessClients) {
+          const clientAds = this.ads[business] && this.ads[business][client.id] ? this.ads[business][client.id] : [];
+          
+          for (const ad of clientAds) {
+            let adMatch = false;
+            
+            // Check job_key match
+            if (jobKey && ad.job_key && jobKey.toLowerCase().trim() === ad.job_key.toLowerCase().trim()) {
+              adMatch = true;
+              console.log(`DEBUG: Job key match "${jobKey}" -> ${client.name} (Ad: ${ad.ad_title})`);
+            }
+            
+            // Check reference_number match
+            if (referenceNumber && ad.reference_number && referenceNumber.toLowerCase().trim() === ad.reference_number.toLowerCase().trim()) {
+              adMatch = true;
+              console.log(`DEBUG: Reference number match "${referenceNumber}" -> ${client.name} (Ad: ${ad.ad_title})`);
+            }
+            
+            // Check location match with ad
+            if (city && ad.city && city.toLowerCase().trim() === ad.city.toLowerCase().trim()) {
+              adMatch = true;
+              console.log(`DEBUG: Location match "${city}" -> ${client.name} (Ad: ${ad.ad_title})`);
+            }
+            
+            if (adMatch) {
+              const lastName = client.name.split(' ').pop();
+              return {
+                clientName: client.name,
+                clientCode: lastName.substring(0, 3).toUpperCase(),
+                lastName: lastName,
+                clientId: client.id
+              };
+            }
+          }
+        }
+      }
+      
+      // If no ad match, try location-based matching
       for (const client of businessClients) {
         if (client.locations) {
           // Split locations by comma and check for exact city match
@@ -133,7 +213,7 @@ class InvoiceProcessor {
           });
           
           if (cityMatch) {
-            console.log(`DEBUG: Found match for "${city}" -> ${client.name}`);
+            console.log(`DEBUG: Found location match for "${city}" -> ${client.name}`);
             const lastName = client.name.split(' ').pop();
             return {
               clientName: client.name,
@@ -317,8 +397,8 @@ class InvoiceProcessor {
           // Determine business first
           formatted.business = this.determineBusiness(formatted);
           
-          // Extract client information based on business and location
-          const clientInfo = this.extractClientInfo(formatted.business, formatted.location);
+          // Extract client information based on business, location, job_key, and reference_number
+          const clientInfo = this.extractClientInfo(formatted.business, formatted.location, formatted.job_key, formatted.reference_number);
           formatted.client_name = clientInfo.clientName;
           formatted.client_code = clientInfo.clientCode;
           formatted.last_name = clientInfo.lastName;
@@ -593,8 +673,9 @@ class InvoiceProcessor {
     try {
       console.log('Starting invoice processing...\n');
       
-      // Load clients from database first
+      // Load clients and ads from database first
       await this.loadClients();
+      await this.loadAds();
       
       await this.processDirectory(inputDir);
       await this.writeClientFiles(outputDir);
